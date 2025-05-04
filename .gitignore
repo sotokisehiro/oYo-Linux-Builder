@@ -3,3 +3,11 @@
 # Python キャッシュ
 __pycache__/
 *.py[cod]
+
+# Python 仮想環境
+.venv/
+
+# ビルドログ
+log/
+
+

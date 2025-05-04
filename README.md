@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+# oYo-Linux-Builder
+Custom Linux ISO build tool
+=======
 # oYo Linux Builder
 
 **oYo Linux Builder** は、open.Yellow.os 開発チーム が提供する  
@@ -12,6 +16,18 @@
 - **ブランド対応**: 壁紙・アイコン・ブートアニメーションを `--brand` で差し替え  
 - **Hook 機構**: `hooks/post-install.d/*.sh` で任意コマンドを自動実行  
 - **テンプレート対応**: Jinja2＋YAML で `os-release` や `branding.desc` を自動生成  
+
+---
+
+## ⚙️ 前提要件
+
+- Debian系Linux（open.Yellow.os/Debian）  
+- Python 3.8+  
+- root権限 または sudo  
+- 以下パッケージ（ホスト側）  
+  ```
+  debootstrap rsync squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso dosfstools
+  ```
 
 ---
 
@@ -62,18 +78,6 @@
 
 ---
 
-## ⚙️ 前提要件
-
-- Debian系Linux（open.Yellow.os/Debian）  
-- Python 3.8+  
-- root権限 または sudo  
-- 以下パッケージ（ホスト側）  
-  ```
-  debootstrap rsync squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso dosfstools
-  ```
-
----
-
 ## 📄 ライセンス
 
 - MIT License  
@@ -88,3 +92,4 @@
 
 フォーク＆プルリク大歓迎！  
 詳細は [CONTRIBUTING.md](./CONTRIBUTING.md) をご参照ください。
+>>>>>>> bb9e162 (Initial import of oYo Linux Builder)

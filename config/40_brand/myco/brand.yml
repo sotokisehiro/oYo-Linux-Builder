@@ -1,0 +1,6 @@
+name: "MyCo Linux"
+pretty_name: "MyCo Linux 1.0"
+version_id: "1.0"
+logo: "myco-logo.png"
+wallpaper: "myco-wallpaper.png"
+plymouth: "myco-theme"

@@ -1,0 +1,14 @@
+calamares
+dconf-cli
+linux-image-amd64
+live-boot
+initramfs-tools
+sudo
+dbus-user-session
+xwayland
+mesa-vulkan-drivers
+libvirglrenderer1
+libegl-mesa0
+libgbm1
+libgl1-mesa-dri
+ca-certificates

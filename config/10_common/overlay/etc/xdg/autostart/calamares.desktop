@@ -1,0 +1,7 @@
+[Desktop Entry]
+ Type=Application
+ Name=Calamares Installer
+ Comment=Start the Calamares installer at login
+ OnlyShowIn=GNOME;
+ X-GNOME-Autostart-enabled=true
+ Exec=sudo calamares

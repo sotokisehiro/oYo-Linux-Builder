@@ -1,0 +1,3 @@
+# ja language support
+locales
+fonts-noto-cjk

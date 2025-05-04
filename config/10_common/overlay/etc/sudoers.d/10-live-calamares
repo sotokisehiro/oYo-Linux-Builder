@@ -1,0 +1,2 @@
+# live ユーザーが password なしで calamares を実行できるようにする
+live ALL=(root) NOPASSWD: /usr/bin/calamares

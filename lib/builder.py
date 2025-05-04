@@ -1,0 +1,657 @@
+#!/usr/bin/env python3
+import os
+import shutil
+import subprocess
+from pathlib import Path
+import logging
+import datetime
+import re
+import sys
+import shutil as _shutil
+import yaml
+from jinja2 import Environment, FileSystemLoader
+
+# debootstrap などが /usr/sbin/ に入っている場合があるので、
+# チェックを行う前に sbin を PATH に含める
+os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + "/usr/sbin"
+
+ROOT     = Path(__file__).resolve().parent.parent
+CFG_BASE = ROOT / "config"
+
+def _render_brand_template(template_name: str, dest_path: Path, context: dict):
+    """config/brand/<brand>/templates からテンプレートを探し、
+       コンテキストでレンダリングして chroot 内に書き込む"""
+    brand = os.getenv("OYO_BRAND", "default")
+    tpl_dir = CFG_BASE / "brand" / brand / "templates"
+    env = Environment(loader=FileSystemLoader(str(tpl_dir)))
+    tpl = env.get_template(template_name)
+    rendered = tpl.render(**context)
+
+    target = CHROOT / dest_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(rendered)
+    print(f"Rendered {template_name} → {target}")
+
+def get_configs() -> list[Path]:
+    """
+    config/配下を数字プレフィックス順にスキャンして、
+    common→flavor→lang→brand を自動で選択・返却する。
+    """
+    flavor = os.getenv("OYO_FLAVOR", "common")
+    lang   = os.getenv("OYO_LANG",    "en")
+    brand  = os.getenv("OYO_BRAND",   "default")
+
+    configs: list[Path] = []
+    for grp in sorted(CFG_BASE.iterdir()):
+        if not grp.is_dir() or "_" not in grp.name:
+            continue
+        # ディレクトリ名を "NN_key" に分割
+        _num, key = grp.name.split("_", 1)
+
+        # common レイヤー
+        if key == "common":
+            configs.append(grp)
+
+        # flavor レイヤー
+        elif key == flavor:
+            configs.append(grp)
+
+        # lang レイヤー（サブディレクトリ ja|en があるはず）
+        elif key == "lang":
+            sub = grp / lang
+            if sub.is_dir():
+                configs.append(sub)
+
+        # brand レイヤー（サブディレクトリ default|myco があるはず）
+        elif key == "brand":
+            sub = grp / brand
+            if sub.is_dir():
+                configs.append(sub)
+
+    return configs
+    
+def _run_hooks(stage: str):
+    """
+    common→flavor→lang→brand の各 config/hooks/<stage>.d/*.sh を
+    chroot 内で順に実行する。
+    """
+    for cfg in get_configs():
+        hooks_dir = cfg / "hooks" / f"{stage}.d"
+        if not hooks_dir.is_dir():
+            continue
+        # chroot 内の一時フォルダを用意
+        tmpdir = CHROOT / "tmp"
+        tmpdir.mkdir(parents=True, exist_ok=True)
+        for script in sorted(hooks_dir.iterdir()):
+            if script.suffix == ".sh" and script.is_file():
+                dest = tmpdir / script.name
+                print(f"→ hook: copying {script} to {dest}")
+                _run(["sudo", "cp", str(script), str(dest)])
+                print(f"→ hook: executing {script.name} in chroot")
+                _run([
+                    "sudo", "chroot", str(CHROOT),
+                    "sh", f"/tmp/{script.name}"
+                ])
+    
+def _render_brand_template(template_name: str, dest: Path, context: dict):
+    """
+    config/brand/<brand>/templates/<template_name> を
+    Jinja2 でレンダリングし、CHROOT 内の dest に書き込む。
+    """
+    brand = os.getenv("OYO_BRAND", "default")
+    tpl_dir = CFG_BASE / "brand" / brand / "templates"
+    env = Environment(loader=FileSystemLoader(str(tpl_dir)))
+    tpl = env.get_template(template_name)
+    rendered = tpl.render(**context)
+
+    target = CHROOT / dest
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(rendered)
+    print(f"Rendered {template_name} → {target}")
+
+LOG_DIR = ROOT / "log"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+# ビルドに必要な外部コマンド一覧
+REQUIRED_COMMANDS = [
+    "sudo",
+    "debootstrap",
+    "grub-mkrescue",
+    "mksquashfs",
+    "xorriso",
+    "cp",
+    "mount",
+    "umount",
+    "rsync",
+]
+
+def _check_host_dependencies():
+    """ビルドに必須のホスト側コマンドがインストールされているかチェック"""
+    missing = []
+    for cmd in REQUIRED_COMMANDS:
+        if _shutil.which(cmd) is None:
+            missing.append(cmd)
+    if missing:
+        print(f"[ERROR] 以下のコマンドが見つかりません: {', '.join(missing)}")
+        print("ビルドを続行するには、これらをインストールしてください。")
+        sys.exit(1)
+
+# 今回ビルドごとにタイムスタンプ付きログファイルを作成
+ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+LOG_FILE = LOG_DIR / f"build_{ts}.log"
+
+# logging の設定：ファイルとコンソールの両方に出力
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# (既存の) logger 設定 はそのまま
+LOG_DIR = ROOT / "log"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+CONFIG = ROOT / "config"
+WORK   = ROOT / "work"
+CHROOT = WORK / "chroot"
+ISO    = WORK / "iso"
+LOG    = ROOT / "log"
+
+def initialize():
+    """work/ と log/ のディレクトリを作成"""
+    # ホスト依存チェック
+    _check_host_dependencies()
+    for d in (WORK, ISO, CHROOT, LOG):
+        d.mkdir(parents=True, exist_ok=True)
+    print(f"Created work and log directories: {WORK}, {LOG}")
+
+# スクリプトが root で実行中か
+IS_ROOT = (os.geteuid() == 0)
+
+def _run(cmd, **kwargs):
+    """
+    外部コマンド実行のラッパー。
+    - root 実行時は先頭の sudo を自動で除去
+    - 標準出力・エラーをログに流す
+    """
+    # root なら sudo を外す
+    if IS_ROOT and cmd and cmd[0] == "sudo":
+        cmd = cmd[1:]
+    logger.info(">> %s", " ".join(cmd))
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        **kwargs
+    )
+    # プロセスから出力される行をすべてログに
+    for line in proc.stdout:
+        logger.info(line.rstrip())
+    proc.wait()
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd)
+
+def _get_codename_from_os_release() -> str:
+    """common→flavor の順で os-release を探し、VERSION_CODENAME を返す"""
+    # 1) os-release ファイルを検索
+    for cfg in get_configs():
+        src = cfg / "os-release"
+        if src.exists():
+            break
+    else:
+        paths = ", ".join(str(p / "os-release") for p in get_configs())
+        raise FileNotFoundError(
+            f"以下のいずれにも os-release が見つかりません:\n  {paths}\n"
+            "config/common/os-release をご確認ください。"
+        )
+
+    # 2) 中身をパースして VERSION_CODENAME を探す
+    for line in src.read_text().splitlines():
+        if line.startswith("VERSION_CODENAME="):
+            codename = line.split("=",1)[1].strip().strip('"')
+            if codename:
+                return codename
+    raise RuntimeError(
+        f"{src} に VERSION_CODENAME が見つかりません。\n"
+        "例：VERSION_CODENAME=bookworm\n"
+        "を追記してください。"
+    )
+    
+def _get_iso_filename() -> str:
+    """
+    common→flavor の順で os-release を探し、
+    見つかったファイルから ISO のファイル名を決定する
+    """
+    # 1) os-release ファイルを検索
+    for cfg in get_configs():
+        src = cfg / "os-release"
+        if src.exists():
+            break
+    else:
+        paths = "\n  ".join(str(p / "os-release") for p in get_configs())
+        raise FileNotFoundError(
+            f"以下のいずれにも os-release が見つかりません:\n  {paths}\n"
+            "config/common/os-release をご確認ください。"
+        )
+
+    # 2) simple parse
+    info: dict[str,str] = {}
+    for line in src.read_text().splitlines():
+        if "=" not in line or line.strip().startswith("#"):
+            continue
+        k, v = line.split("=", 1)
+        info[k] = v.strip().strip('"')
+
+    name    = info.get("NAME", "os").lower()
+    version = info.get("VERSION_ID", "")
+    base    = f"{name}-{version}" if version else name
+    # 不正文字をアンダースコアに置換
+    safe    = re.sub(r'[^A-Za-z0-9._-]+', '_', base)
+    # 環境変数 OYO_LANG から言語コードを取得（デフォルト en）
+    lang    = os.getenv("OYO_LANG", "en")
+    # 最終的なファイル名に言語コードを追加
+    return f"{safe}-{lang}.iso"
+
+def _prepare_chroot(codename: str):
+    """chroot をクリアして debootstrap でベースシステムを投入"""
+
+    # 古い chroot をまるごと削除
+    if CHROOT.exists():
+        # ─── 念のため残存マウントをアンマウント ───
+        for m in ("dev/pts", "dev/shm", "dev/mqueue", "dev/hugepages",
+                  "dev", "sys", "proc", "run"):
+            target = CHROOT / m
+            if target.exists():
+                # lazy unmount でリソースビジーを回避
+                subprocess.run(
+                    ["sudo", "umount", "-l", str(target)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+        # すべてアンマウントしたあとにディレクトリ削除
+        _run(["sudo", "rm", "-rf", str(CHROOT)])
+
+    # chroot ディレクトリを再作成
+    CHROOT.mkdir(parents=True, exist_ok=True)
+
+    # ① debootstrap でベースシステム投入
+    _run([
+        "sudo", "debootstrap",
+        "--arch=amd64",
+        codename,
+        str(CHROOT),
+        "http://deb.debian.org/debian"
+    ])
+    print(f"Base system deployed via debootstrap ({codename}).")
+
+    # ——— live ユーザーを追加＆パスワード設定 ———
+    # dash（/bin/sh）が chroot にあるので sh -c を使う
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "useradd", "-m", "-s", "/bin/bash", "live"
+    ])
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "sh", "-c",
+        "echo 'live:live' | chpasswd"
+    ])
+    print("ユーザー “live” を作成し、パスワードを “live” に設定しました。")
+
+
+def _copy_overlay():
+    """common→flavor の overlay を順に chroot にコピー"""
+    for cfg in get_configs():
+        overlay = cfg / "overlay"
+        if overlay.exists():
+            print(f"Applying overlay from {overlay} …")
+            # rsync -a なら既存のファイル／シンボリックリンクを上書き削除してくれる
+            _run([
+                "sudo", "rsync", "-a",
+                f"{overlay}/",  # Trailing slash: 中身すべてを
+                str(CHROOT) + "/"  # chroot 直下にコピー
+            ])
+    print("Overlay files copied.")
+
+def _install_packages():
+    """common→flavor→lang の順で packages.txt をマージしてインストール"""
+    lines: list[str] = []
+    print(">>> _install_packages: merging packages from:")
+    for cfg in get_configs():
+        pkgfile = cfg / "packages.txt"
+        if pkgfile.exists():
+            print(f"    - {pkgfile}")
+            lines.extend(pkgfile.read_text().splitlines())
+        else:
+            print(f"    x {pkgfile} (not found)")
+
+    # 空行・コメントを除去して最終リスト化
+    pkgs = [
+        l.strip()
+        for l in lines
+        if l.strip() and not l.strip().startswith("#")
+    ]
+    print(">>> merged pkgs:", pkgs)
+
+    # ライブに必須の追加パッケージは確実に含める
+    for extra in ("dconf-cli", "linux-image-amd64", "initramfs-tools", "live-boot"):
+        if extra not in pkgs:
+            pkgs.append(extra)
+    
+    print("DEBUG: merged packages=", pkgs)
+    
+    # ライブ起動に必要なカーネル・initrd 関連パッケージを必ず追加
+    for extra in ("dconf-cli", "linux-image-amd64", "initramfs-tools", "live-boot"):
+        if extra not in pkgs:
+            pkgs.append(extra)
+
+    # noninteractive モードでプロンプトを抑制
+    env = ["env", "DEBIAN_FRONTEND=noninteractive", "DEBCONF_NONINTERACTIVE_SEEN=true"]
+    dpkg_opts = ["-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"]
+    # non-interactive かつ推奨パッケージを入れないモードでインストール
+    env = [
+        "env",
+        "DEBIAN_FRONTEND=noninteractive",
+        "DEBCONF_NONINTERACTIVE_SEEN=true",
+        "APT_LISTCHANGES_FRONTEND=none"
+    ]
+    _run(["sudo", "chroot", str(CHROOT)] + env + ["apt-get", "update"])
+    _run([
+        "sudo", "chroot", str(CHROOT)
+    ] + env + [
+        "apt-get", "install", "-y",
+        "--no-install-recommends"
+    ] + dpkg_opts + pkgs)
+    print("Packages installed:", pkgs)
+
+def _apply_os_release():
+    """os-release をテンプレート or overlay から設定"""
+    # 1) brand.yml を読み込んで context 作成
+    brand = os.getenv("OYO_BRAND", "default")
+    brand_yml = CFG_BASE / "brand" / brand / "brand.yml"
+    context = {}
+    if brand_yml.exists():
+        context = yaml.safe_load(brand_yml.read_text())
+
+    # 2) テンプレートがあれば優先してレンダリング
+    tpl = CFG_BASE / "brand" / brand / "templates" / "os-release.conf.j2"
+    if tpl.exists():
+        _render_brand_template("os-release.conf.j2", Path("etc") / "os-release", context)
+        return
+
+    # 3) なければ従来通り common→flavor→lang overlay からコピー
+    for cfg in get_configs():
+        src = cfg / "os-release"
+        if src.exists():
+            _run(["sudo", "cp", str(src), str(CHROOT / "etc/os-release")])
+            print(f"Applied os-release from {src}")
+            return
+    raise FileNotFoundError("config/common/os-release をご確認ください。")
+
+def _apply_dconf():
+    """dconf のプロファイル方式で設定を更新"""
+    # overlay 配下に /etc/dconf/db/local.d と /etc/dconf/profile/user を置いている前提
+    print("Applying dconf settings via profile + update…")
+    _run(["sudo", "chroot", str(CHROOT), "dconf", "update"])
+    print("Applied dconf settings.")
+
+def _apply_calamares_branding():
+    """
+    Calamares の branding.desc を
+    1) config/brand/<brand>/templates/branding.desc.j2 からレンダリング
+       → chroot/etc/calamares/branding/<brand>/branding.desc に書き込む
+    2) もしテンプレートがなければ overlay の既存ファイルをそのまま使う
+    """
+    brand = os.getenv("OYO_BRAND", "default")
+    # brand.yml から変数を読み込む
+    yml = CFG_BASE / "brand" / brand / "brand.yml"
+    context = {}
+    if yml.exists():
+        context = yaml.safe_load(yml.read_text())
+    # テンプレートがあればレンダリング
+    tpl = CFG_BASE / "brand" / brand / "templates" / "branding.desc.j2"
+    if tpl.exists():
+        # Calamares の overlay で使われているディレクトリ名をそのまま使います
+        dest = Path("etc") / "calamares" / "branding" / brand / "branding.desc"
+        _render_brand_template("branding.desc.j2", dest, context)
+    else:
+        print(f"No branding.desc.j2 for brand={brand}, skipping template.")
+
+def build_iso():
+    """ISO ビルドのメインフロー"""
+    logger.info("=== Build started ===")
+    codename = _get_codename_from_os_release()
+
+    _prepare_chroot(codename)
+
+    print("Copying overlay…")
+    _copy_overlay()
+
+    # ─── Calamares branding.desc をテンプレートで生成する ───
+    print("Applying Calamares branding template…")
+    _apply_calamares_branding()
+    
+    # ——— chroot 内に /proc /sys /dev をバインドマウント ———
+    print("Mounting /proc, /sys, /dev into chroot…")
+    for fs in ("proc", "sys", "dev"):
+        target = CHROOT / fs
+        target.mkdir(exist_ok=True)
+        _run(["sudo", "mount", "--bind", f"/{fs}", str(target)])
+        
+    # ホストの APT キャッシュを使う (/var/cache/apt/archives)
+    print("Binding host APT cache into chroot…")
+    apt_cache = CHROOT / "var" / "cache" / "apt" / "archives"
+    apt_cache.mkdir(parents=True, exist_ok=True)
+    _run(["sudo", "mount", "--bind", "/var/cache/apt/archives", str(apt_cache)])  
+
+    # ——— post-install hooks を実行 ———
+    print("Running pre-install hooks…")
+    _run_hooks("pre-install")
+
+    print("Installing packages…")
+    _install_packages()
+    
+    # ——— post-install hooks を実行 ———
+    print("Running post-install hooks…")
+    _run_hooks("post-install")
+
+    # ─── GUI起動のための systemd 設定 ───
+    print("Enabling graphical.target and GDM3 auto-login…")
+    # 1) デフォルトターゲットを graphical.target に
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "ln", "-sf",
+        "/lib/systemd/system/graphical.target",
+        "/etc/systemd/system/default.target"
+    ])
+
+    print("Applying OS release…")
+    _apply_os_release()
+
+    print("Applying dconf settings…")
+    _apply_dconf()
+
+    # ① live ディレクトリを作ってカーネルと initrd をワイルドカードで配置
+    live_chroot = CHROOT / "live"
+    _run(["sudo", "rm", "-rf", str(live_chroot)])
+    live_chroot.mkdir(parents=True, exist_ok=True)
+
+    kernel_files = sorted((CHROOT / "boot").glob("vmlinuz-*"))
+    initrd_files = sorted((CHROOT / "boot").glob("initrd.img-*"))
+    kernel_src = kernel_files[-1]
+    initrd_src = initrd_files[-1]
+
+    _run(["sudo", "cp", str(kernel_src), str(live_chroot / "vmlinuz")])
+    _run(["sudo", "cp", str(initrd_src), str(live_chroot / "initrd.img")])
+    print(f"Live kernel ({kernel_src.name}) and initrd ({initrd_src.name}) copied.")
+    print("Applying dconf settings…")
+    _apply_dconf()
+
+    # ——— ISO ルートを作成 ———
+    print("Preparing ISO root…")
+    _run(["sudo", "rm", "-rf", str(ISO)])
+    ISO.mkdir(parents=True, exist_ok=True)
+
+    # 必要なディレクトリだけコピー（相対パスでマッチさせる）
+    _run([
+        "sudo", "rsync", "-a",
+        # 1) boot/ 以下を丸ごと
+        "--include=boot/", "--include=boot/**",
+        # 2) UEFI 用の EFI ディレクトリ
+        "--include=EFI/",  "--include=EFI/**",
+        # 3) GRUB モジュール（i386-pc, x86_64-efi など）
+        "--include=usr/",                  # usr/lib 以下を辿るため
+        "--include=usr/lib/",              # usr/lib ディレクトリ自体
+        "--include=usr/lib/grub/",         # grub モジュール基本フォルダ
+        "--include=usr/lib/grub/**",       # モジュール全ファイル
+        "--include=usr/share/",            # usr/share 以下を辿るため
+        "--include=usr/share/grub/",       # シェアド・grub ディレクトリ
+        "--include=usr/share/grub/**",     # テーマやロケール等
+        # 4) squashfs の置き場 live/ 以下
+        "--include=live/", "--include=live/**",
+        # 5) それ以外は不要
+        "--exclude=*",
+        f"{CHROOT}/", f"{ISO}/"
+    ])
+    print("ISO root prepared (with /proc, /sys, /dev excluded).")
+
+    # ——— ISO ルートに live カーネル/初期RAMをコピー ———
+    live_dir = ISO / "live"
+    _run(["sudo", "rm", "-rf", str(live_dir)])
+    live_dir.mkdir(parents=True, exist_ok=True)
+
+    # chroot/boot 以下から最新のカーネルと initrd をワイルドカードで取得
+    kernel_files = sorted((CHROOT / "boot").glob("vmlinuz-*"))
+    initrd_files = sorted((CHROOT / "boot").glob("initrd.img-*"))
+    if not kernel_files or not initrd_files:
+        raise FileNotFoundError("chroot/boot に vmlinuz-* または initrd.img-* が見つかりません")
+    kernel_src = kernel_files[-1]
+    initrd_src = initrd_files[-1]
+
+    _run(["sudo", "cp", str(kernel_src), str(live_dir / "vmlinuz")])
+    _run(["sudo", "cp", str(initrd_src), str(live_dir / "initrd.img")])
+    print(f"Copied live kernel ({kernel_src.name}) and initrd ({initrd_src.name}) into ISO root.")
+    
+    # squashfs イメージを作成（仮想FSを完全除外）
+    # —— squashfs の前に chroot の仮想FSをアンマウント —— 
+    print("Unmounting /proc, /sys, /dev from chroot before squashfs…")
+    for fs in ("dev", "sys", "proc", "var/cache/apt/archives"):
+        _run(["sudo", "umount", "-l", str(CHROOT / fs)])
+
+    # squashfs イメージを作成
+    squashfs = live_dir / "filesystem.squashfs"
+    print("Creating squashfs image…")
+    _run([
+        "sudo", "mksquashfs",
+        str(CHROOT),
+        str(squashfs),
+        "-e", "boot",      # /boot は別途コピー
+        "-e", "live"       # /live は別途コピー
+    ])
+    print(f"Squashfs image created at {squashfs}")
+
+    # ISO イメージを作成
+    logger.info("Creating ISO…")
+    _make_iso()
+
+    # ——— マウントしたものをアンマウント ———
+    print("Unmounting /proc, /sys, /dev from chroot…")
+    # アンマウント時の「not mounted」を無視する
+    import subprocess
+    for fs in ("dev", "sys", "proc"):
+        target = CHROOT / fs
+        try:
+            subprocess.run(
+                ["sudo", "umount", str(target)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except subprocess.CalledProcessError:
+            # 既にアンマウント済み or 存在しない場合はスキップ
+            logger.info(f"{fs} not mounted, skipping unmount.")
+
+        
+    # APT キャッシュのバインドも解除（not mounted エラーは無視）
+    print("Unmounting host APT cache from chroot…")
+    import subprocess
+    try:
+        # すでに root なら sudo を外す
+        cmd = ["sudo", "umount", str(apt_cache)]
+        if IS_ROOT and cmd[0] == "sudo":
+            cmd = cmd[1:]
+        subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+    except subprocess.CalledProcessError:
+        logger.info("host APT cache not mounted, skipping unmount.")
+
+    # 終了ログ
+    logger.info("=== Build finished ===")
+
+def _make_iso():
+    """grub-mkrescue で ISO イメージを作成。名前は os-release に従う"""
+    # 動的にファイル名を決定
+    iso_name = _get_iso_filename()
+    iso_file = ROOT / iso_name
+    # Root 権限で実行しないと、root:root のままのファイルを読めない
+    _run([
+        "sudo", "grub-mkrescue",
+        "--output", str(iso_file),
+        "--compress=xz",
+        # モジュール名はスペース区切り（shell でまとめて渡す）
+        "--modules=normal configfile iso9660 part_msdos loopback search",
+        str(ISO)
+    ])
+    logger.info(f"ISO image created: {iso_file}")
+
+def clean_work():
+    """work/ 以下をクリーンアップ"""
+    # ① まず残っている bind マウントを外す
+    import os
+    devnull = subprocess.DEVNULL if os.path.exists(os.devnull) else None
+    for fs in (
+        "var/cache/apt/archives",
+        "dev/pts",
+        "dev/mqueue",
+        "dev/hugepages",
+        "dev/shm",
+        "dev",
+        "sys",
+        "proc"
+    ):
+        target = CHROOT / fs
+        # 存在していればアンマウントを試みる
+        if target.exists():
+            try:
+                # stdout/stderr を /dev/null に捨てる
+                if devnull is not None:
+                    subprocess.run(
+                        ["sudo", "umount", "-l", str(target)],
+                        stdout=devnull,
+                        stderr=devnull,
+                        check=False
+                    )
+                else:
+                    # /dev/null がないならリダイレクトせず実行
+                    subprocess.run(
+                        ["sudo", "umount", "-l", str(target)],
+                        check=False
+                    )
+            except FileNotFoundError:
+                # 念のため、失敗しても先に進める
+                pass
+
+    # ② work ディレクトリを丸ごと削除
+    if WORK.exists():
+        _run(["sudo", "rm", "-rf", str(WORK)])
+    WORK.mkdir(parents=True, exist_ok=True)
+    print(f"Cleaned work directory: {WORK}")
+

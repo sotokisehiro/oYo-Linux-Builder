@@ -1,0 +1,4 @@
+[Allow Calamares for live user]
+Identity=unix-user:live
+Action=org.freedesktop.policykit.exec
+ResultActive=yes

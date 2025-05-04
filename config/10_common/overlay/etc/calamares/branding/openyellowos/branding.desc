@@ -1,0 +1,22 @@
+---
+componentName: openyellowos
+
+strings:
+  productName:         "open.Yellow.os"
+  shortProductName:    "oYo"
+  versionedName:       "open.Yellow.os 25.04 (Freesia)"
+  bootloaderEntryName: "open.Yellow.os Installer"
+
+images:
+  productIcon:    "debian-logo.png"
+  productLogo:    "debian-logo.png"
+  productWelcome: "welcome.png"
+
+style:
+  SidebarBackground:        "#292F34"
+  SidebarText:              "#FFFFFF"
+  SidebarBackgroundCurrent: "#D35400"
+  SidebarTextCurrent:       "#292F34"
+
+slideshow: "show.qml"
+

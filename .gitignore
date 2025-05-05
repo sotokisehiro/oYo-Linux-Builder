@@ -10,4 +10,7 @@ __pycache__/
 # ビルドログ
 log/
 
+#ISO
+*.iso
+
 

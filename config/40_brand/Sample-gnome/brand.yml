@@ -1,0 +1,6 @@
+name: "Sample gnome Linux"
+pretty_name: "Sample gnome Linux 1.0"
+version_id: "1.0"
+logo: "default-logo.png"
+wallpaper: "default-wallpaper.png"
+plymouth: "default-theme"

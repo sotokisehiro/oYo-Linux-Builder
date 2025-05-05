@@ -8,7 +8,7 @@
 
 ### 1. システム要件
 
-- **ホスト OS**: Debian 系 Linux（Debian GNU/Linux 12 Bullseye 以降、Ubuntu 20.04 以降推奨）  
+- **ホスト OS**: Debian 系 Linux（Debian GNU/Linux 12 Bullseye 以降、open.Yellow.os Freesia 以降推奨）  
 - **CPU**: x86_64 アーキテクチャ  
 - **メモリ**: 最低 4 GB (ビルド時は 2 GB 以上推奨)  
 - **ディスク容量**: ビルド用ワークディレクトリに少なくとも 10 GB  
@@ -29,7 +29,8 @@ sudo apt install -y \
   grub-pc-bin \
   grub-efi-amd64-bin \
   xorriso \
-  dosfstools
+  dosfstools \
+  mtools
 ```
 
 - `debootstrap` : Debian チェルネルの初期ベースシステムを作成  
@@ -87,7 +88,7 @@ pip install -r requirements.txt
 ./bin/oyo_builder.py \
   --flavor gnome \
   --lang ja \
-  --brand myco \
+  --brand Sample-gnome \
   build
 ```
 
@@ -119,14 +120,15 @@ qemu-system-x86_64 \
 
 #### UEFI モード
 ```bash
-mkdir -p ~/ovmf
-cp /usr/share/OVMF/OVMF_VARS.fd ~/ovmf/
+mkdir -p "$HOME/ovmf"
+cp /usr/share/OVMF/OVMF_VARS.fd "$HOME/ovmf/OVMF_VARS.fd"
+
 qemu-system-x86_64 \
   -enable-kvm \
   -m 2048 \
   -machine q35,accel=kvm \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
-  -drive if=pflash,format=raw,file=~/ovmf/OVMF_VARS.fd \
+  -drive if=pflash,format=raw,file="$HOME/ovmf/OVMF_VARS.fd" \
   -cdrom *.iso \
   -boot menu=on \
   -vga qxl \

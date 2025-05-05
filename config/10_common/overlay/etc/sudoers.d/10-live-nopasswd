@@ -1,0 +1,2 @@
+# liveユーザーは全てのコマンドをパスワードなしで実行できる
+live  ALL=(ALL) NOPASSWD: ALL

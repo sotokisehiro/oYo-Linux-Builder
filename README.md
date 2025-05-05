@@ -1,8 +1,6 @@
-<<<<<<< HEAD
 # oYo-Linux-Builder
 Custom Linux ISO build tool
-=======
-# oYo Linux Builder
+
 
 **oYo Linux Builder** は、open.Yellow.os 開発チーム が提供する  
 「簡単にオリジナル Linux ISO を自動ビルドするツール」です。
@@ -21,12 +19,12 @@ Custom Linux ISO build tool
 
 ## ⚙️ 前提要件
 
-- Debian系Linux（open.Yellow.os/Debian）  
+- Debian系Linux（Debian GNU/Linux 12 Bullseye 以降、open.Yellow.os Freesia 以降推奨）  
 - Python 3.8+  
 - root権限 または sudo  
 - 以下パッケージ（ホスト側）  
   ```
-  debootstrap rsync squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso dosfstools
+  debootstrap rsync squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso dosfstools mtools
   ```
 
 ---
@@ -55,26 +53,44 @@ Custom Linux ISO build tool
    ./bin/oyo_builder.py init
    ```
 
-5. ISO のビルド例（GNOME／日本語／MyCo ブランド）  
+5. ISO のビルド例（GNOME／日本語／Sample-gnome ブランド）  
    ```bash
    ./bin/oyo_builder.py \
      --flavor gnome \
      --lang ja \
-     --brand myco \
+     --brand Sample-gnome \
      build
    ```
 
 6. QEMU でテスト起動  
-   ```bash
-   qemu-system-x86_64 \
-     -enable-kvm \
-     -m 2048 \
-     -machine type=pc,accel=kvm \
-     -cdrom open.yellow.os-*.iso \
-     -boot menu=on \
-     -vga qxl \
-     -serial mon:stdio
-   ```
+#### BIOS モード
+```bash
+qemu-system-x86_64 \
+  -enable-kvm \
+  -m 2048 \
+  -machine type=pc,accel=kvm \
+  -cdrom *.iso \
+  -boot menu=on \
+  -vga qxl \
+  -serial mon:stdio
+```
+
+#### UEFI モード
+```bash
+mkdir -p "$HOME/ovmf"
+cp /usr/share/OVMF/OVMF_VARS.fd "$HOME/ovmf/OVMF_VARS.fd"
+
+qemu-system-x86_64 \
+  -enable-kvm \
+  -m 2048 \
+  -machine q35,accel=kvm \
+  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
+  -drive if=pflash,format=raw,file="$HOME/ovmf/OVMF_VARS.fd" \
+  -cdrom *.iso \
+  -boot menu=on \
+  -vga qxl \
+  -serial mon:stdio
+```
 
 ---
 
@@ -92,4 +108,3 @@ Custom Linux ISO build tool
 
 フォーク＆プルリク大歓迎！  
 詳細は [CONTRIBUTING.md](./CONTRIBUTING.md) をご参照ください。
->>>>>>> bb9e162 (Initial import of oYo Linux Builder)

@@ -1,0 +1,22 @@
+# 最小限の GNOME セッション
+gnome-core
+
+# GDM（ログインマネージャ）
+gdm3
+
+# ネットワーク設定の GNOME フロントエンド
+network-manager-gnome
+
+# GNOME コントロールセンター & 設定デーモン
+gnome-control-center
+gnome-settings-daemon
+
+# GNOME ターミナル
+gnome-terminal
+
+# ファイルマネージャ Nautilus
+nautilus
+
+# Wayland コンポジタ
+mutter
+

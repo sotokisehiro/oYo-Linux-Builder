@@ -1,0 +1,15 @@
+# KDE Plasma コアセッション
+plasma-desktop
+
+# ログインマネージャ
+sddm
+
+# ネットワーク設定用 GUI
+plasma-nm
+
+# ターミナル
+konsole
+
+# ファイルマネージャ
+dolphin
+

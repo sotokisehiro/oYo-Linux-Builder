@@ -22,7 +22,18 @@ def _render_brand_template(template_name: str, dest_path: Path, context: dict):
     """config/brand/<brand>/templates からテンプレートを探し、
        コンテキストでレンダリングして chroot 内に書き込む"""
     brand = os.getenv("OYO_BRAND", "default")
-    tpl_dir = CFG_BASE / "brand" / brand / "templates"
+
+    # 数字付きプレフィックス付きディレクトリを優先して探す
+    brand_layer = next(
+        (d for d in CFG_BASE.iterdir()
+         if d.is_dir() and d.name.split("_",1)[1] == "brand"),
+        None
+    )
+    if not brand_layer:
+        raise FileNotFoundError("config 配下に *_brand ディレクトリが見つかりません")
+        
+    tpl_dir = brand_layer / brand / "templates"
+
     env = Environment(loader=FileSystemLoader(str(tpl_dir)))
     tpl = env.get_template(template_name)
     rendered = tpl.render(**context)
@@ -52,9 +63,11 @@ def get_configs() -> list[Path]:
         if key == "common":
             configs.append(grp)
 
-        # flavor レイヤー
-        elif key == flavor:
-            configs.append(grp)
+        # flavor レイヤー（config/NN_flavor/<flavor> を探す）
+        elif key == "flavor":
+            sub = grp / flavor
+            if sub.is_dir():
+                configs.append(sub)
 
         # lang レイヤー（サブディレクトリ ja|en があるはず）
         elif key == "lang":
@@ -99,7 +112,12 @@ def _render_brand_template(template_name: str, dest: Path, context: dict):
     Jinja2 でレンダリングし、CHROOT 内の dest に書き込む。
     """
     brand = os.getenv("OYO_BRAND", "default")
-    tpl_dir = CFG_BASE / "brand" / brand / "templates"
+    # 同じく数字付きプレフィックス付き「*_brand」から拾う
+    brand_layer = next(
+        (d for d in CFG_BASE.iterdir() if d.is_dir() and d.name.split("_",1)[1] == "brand"),
+        None
+    )
+    tpl_dir = brand_layer / brand / "templates"
     env = Environment(loader=FileSystemLoader(str(tpl_dir)))
     tpl = env.get_template(template_name)
     rendered = tpl.render(**context)
@@ -123,6 +141,7 @@ REQUIRED_COMMANDS = [
     "mount",
     "umount",
     "rsync",
+    "mtools",
 ]
 
 def _check_host_dependencies():
@@ -315,6 +334,15 @@ def _copy_overlay():
                 f"{overlay}/",  # Trailing slash: 中身すべてを
                 str(CHROOT) + "/"  # chroot 直下にコピー
             ])
+            
+    # --- ここで必ず sudoers.d の所有者を root:root に戻す ---
+    print("Fixing ownership on /etc/sudoers.d …")
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "chown", "-R", "root:root", "/etc/sudoers.d"
+    ])
+
+
     print("Overlay files copied.")
 
 def _install_packages():
@@ -372,15 +400,34 @@ def _apply_os_release():
     """os-release をテンプレート or overlay から設定"""
     # 1) brand.yml を読み込んで context 作成
     brand = os.getenv("OYO_BRAND", "default")
-    brand_yml = CFG_BASE / "brand" / brand / "brand.yml"
+
+    # 数字接頭辞付きの「*_brand」ディレクトリを探す
+    brand_layer = next(
+        (d for d in CFG_BASE.iterdir()
+         if d.is_dir() and d.name.split("_",1)[1] == "brand"),
+        None
+    )
+    if not brand_layer:
+        raise FileNotFoundError("config 配下に *_brand ディレクトリが見つかりません")
+
+    # この下に各ブランド設定フォルダ（Sample-gnome など）がある想定
+    brand_dir = brand_layer / brand
+        
+     # 1) brand.yml を読み込んで context 作成
+    brand_yml = brand_dir / "brand.yml"
+
     context = {}
     if brand_yml.exists():
         context = yaml.safe_load(brand_yml.read_text())
 
     # 2) テンプレートがあれば優先してレンダリング
-    tpl = CFG_BASE / "brand" / brand / "templates" / "os-release.conf.j2"
+    tpl = brand_dir / "templates" / "os-release.conf.j2"
     if tpl.exists():
-        _render_brand_template("os-release.conf.j2", Path("etc") / "os-release", context)
+        _render_brand_template(
+            "os-release.conf.j2",
+            Path("etc") / "os-release",
+            context
+        )
         return
 
     # 3) なければ従来通り common→flavor→lang overlay からコピー
@@ -407,13 +454,23 @@ def _apply_calamares_branding():
     2) もしテンプレートがなければ overlay の既存ファイルをそのまま使う
     """
     brand = os.getenv("OYO_BRAND", "default")
+
+    # 数字付きプレフィックスの「*_brand」ディレクトリを探す
+    brand_layer = next(
+        (d for d in CFG_BASE.iterdir() if d.is_dir() and d.name.split("_",1)[1] == "brand"),
+        None
+    )
     # brand.yml から変数を読み込む
-    yml = CFG_BASE / "brand" / brand / "brand.yml"
+    yml = brand_layer / brand / "brand.yml" if brand_layer else CFG_BASE / "brand" / brand / "brand.yml"
+
     context = {}
     if yml.exists():
         context = yaml.safe_load(yml.read_text())
     # テンプレートがあればレンダリング
-    tpl = CFG_BASE / "brand" / brand / "templates" / "branding.desc.j2"
+    tpl = brand_layer / brand / "templates" / "branding.desc.j2" if brand_layer else CFG_BASE / "brand" / brand / "templates" / "branding.desc.j2"
+    if tpl.exists():
+         dest = Path("etc") / "calamares" / "branding" / brand / "branding.desc"
+         _render_brand_template("branding.desc.j2", dest, context)
     if tpl.exists():
         # Calamares の overlay で使われているディレクトリ名をそのまま使います
         dest = Path("etc") / "calamares" / "branding" / brand / "branding.desc"
@@ -499,6 +556,14 @@ def build_iso():
     # 必要なディレクトリだけコピー（相対パスでマッチさせる）
     _run([
         "sudo", "rsync", "-a",
+        # Calamares 本体／モジュールを含める
+        "--include=usr/lib/calamares/", 
+        "--include=usr/lib/calamares/modules/", 
+        "--include=usr/lib/calamares/modules/**",
+        "--include=usr/lib/calamares/core.so",
+        "--include=usr/lib/calamares/libcalamares*.so",
+        "--include=usr/share/calamares/", 
+        "--include=usr/share/calamares/**",
         # 1) boot/ 以下を丸ごと
         "--include=boot/", "--include=boot/**",
         # 2) UEFI 用の EFI ディレクトリ
@@ -519,6 +584,76 @@ def build_iso():
     ])
     print("ISO root prepared (with /proc, /sys, /dev excluded).")
 
+    # ─── Plymouth テンプレートがあればここで適用 ───
+    from pathlib import Path
+    import yaml
+
+    # 1) brand レイヤーを探して paths を決定
+    brand = os.getenv("OYO_BRAND", "default")
+    brand_layer = next(
+        (d for d in CFG_BASE.iterdir()
+         if d.is_dir() and d.name.split("_",1)[1] == "brand"),
+        None
+    )
+    if brand_layer:
+        brand_dir = brand_layer / brand
+        # context は brand.yml から
+        context = {}
+        yml = brand_dir / "brand.yml"
+        if yml.exists():
+            context = yaml.safe_load(yml.read_text())
+
+        # ① plymouth-theme.conf.j2 → テーマ本体
+        theme_tpl = brand_dir / "templates" / "plymouth-theme.conf.j2"
+        if theme_tpl.exists():
+            _render_brand_template(
+                "plymouth-theme.conf.j2",
+                Path("usr") / "share" / "plymouth" / "themes" / context.get("theme","default") / "theme",
+                context
+            )
+            print(f"Applied Plymouth theme from {theme_tpl}")
+
+        # ② plymouth-<theme>.conf.j2 → 設定ファイル
+        for tpl in (brand_dir / "templates").glob("plymouth-*.conf.j2"):
+            out_name = tpl.name[:-3]   # .j2 を外したファイル名
+            _render_brand_template(
+                tpl.name,
+                Path("etc") / "plymouth" / out_name,
+                context
+            )
+            print(f"Applied Plymouth config from {tpl}")
+    
+    # 【Brand テンプレートがあれば BIOS/UEFI 両方の grub.cfg を上書き】
+    from pathlib import Path
+    brand = os.getenv("OYO_BRAND", "default")
+    brand_layer = next(
+        (d for d in CFG_BASE.iterdir() if d.is_dir() and d.name.endswith("_brand")),
+        None
+    )
+    if brand_layer:
+        brand_dir = brand_layer / brand
+        grub_tpl = brand_dir / "templates" / "grub.cfg.j2"
+        if grub_tpl.exists():
+            # brand.yml からコンテキストを読み直す
+            context = {}
+            yml = brand_dir / "brand.yml"
+            if yml.exists():
+                context = yaml.safe_load(yml.read_text())
+
+            # BIOS 向け grub.cfg
+            _render_brand_template(
+                "grub.cfg.j2",
+                ISO / "boot" / "grub" / "grub.cfg",
+                context
+            )
+            # UEFI 向け grub.cfg
+            _render_brand_template(
+                "grub.cfg.j2",
+                ISO / "EFI" / "BOOT" / "grub.cfg",
+                context
+            )
+            print(f"Applied branded grub.cfg from {grub_tpl} to BIOS and UEFI")
+    
     # ——— ISO ルートに live カーネル/初期RAMをコピー ———
     live_dir = ISO / "live"
     _run(["sudo", "rm", "-rf", str(live_dir)])

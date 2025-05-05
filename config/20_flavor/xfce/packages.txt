@@ -1,0 +1,14 @@
+# XFCE コアセッション（メタパッケージ）
+xfce4
+
+# ログインマネージャ
+lightdm
+
+# ネットワーク設定用 GUI
+network-manager-gnome
+
+# ターミナル
+xfce4-terminal
+
+# ファイルマネージャ
+thunar

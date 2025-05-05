@@ -1,7 +1,0 @@
-[Allow live to manage disks]
-Identity=unix-user:live
-# udisks2 のすべての認可アクションをパス
-Action=org.freedesktop.udisks2.*
-ResultAny=yes
-ResultInactive=yes
-ResultActive=yes

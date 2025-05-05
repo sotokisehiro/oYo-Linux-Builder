@@ -12,3 +12,18 @@ libegl-mesa0
 libgbm1
 libgl1-mesa-dri
 ca-certificates
+dictionaries-common
+cracklib-runtime
+libpam-pwquality
+
+# GeoIP 自動検出用
+qt6-location-plugins
+geoclue-2.0
+curl
+
+# LUKS 暗号化サポート
+cryptsetup
+calamares
+
+rsync
+locate

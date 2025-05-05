@@ -1,3 +1,6 @@
 # ja language support
 locales
+fcitx5
+fcitx5-mozc
 fonts-noto-cjk
+gnome-shell-extension-kimpanel

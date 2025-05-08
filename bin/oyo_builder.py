@@ -27,6 +27,8 @@ def main(
     flavor: str = Option("common", "--flavor", "-f"),
     lang:   str = Option("en",     "--lang",   "-l"),
     brand:  str = Option("default","--brand","-b"),
+    tmpfs:  bool = Option(False,   "--tmpfs/--no-tmpfs", "-t",
+                         help="work/ を tmpfs にマウントして高速ビルド"),
 ):
     # 環境変数にセットしてから各コマンド起動
     os.environ["OYO_FLAVOR"] = flavor
@@ -48,11 +50,34 @@ def init():
         raise typer.Exit(code=1)
 
 @app.command("build")
-def build():
+def build(
+    tmpfs: bool = Option(
+        False,
+        "--tmpfs/--no-tmpfs",
+        "-t",
+        help="work/ を tmpfs にマウントして高速ビルド",
+    )
+):
     """ISOイメージをビルドする"""
     try:
+        from lib.builder import initialize
+
+        # --tmpfs が指定されたときだけ tmpfs をマウント
+        initialize(use_tmpfs=tmpfs)
         cmd_build()
         typer.secho("ビルドが完了しました。", fg=typer.colors.GREEN)
+        
+        # ─── work/tmpfs をアンマウント ───
+        import subprocess
+        # WORK がまだマウントされている限りループでアンマウント
+        while subprocess.run(["mountpoint", "-q", str(WORK)]).returncode == 0:
+            subprocess.run(
+                ["sudo", "umount", "-l", str(WORK)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False
+            )
+        typer.secho(f"Unmounted tmpfs on {WORK}", fg=typer.colors.BLUE)
     except Exception as e:
         typer.secho(f"[ERROR] {e}", fg=typer.colors.RED)
         raise typer.Exit(code=1)

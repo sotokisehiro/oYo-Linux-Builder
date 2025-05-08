@@ -27,3 +27,11 @@ calamares
 
 rsync
 locate
+
+grub-common
+grub-pc-bin
+grub-efi-amd64-bin
+shim-signed
+efibootmgr
+
+python3-pyqt5.qtsvg

@@ -24,7 +24,7 @@ Custom Linux ISO build tool
 - root権限 または sudo  
 - 以下パッケージ（ホスト側）  
   ```
-  debootstrap rsync squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso dosfstools mtools
+  debootstrap rsync squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso dosfstools mtools python3.11-venv
   ```
 
 ---

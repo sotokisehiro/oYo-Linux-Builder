@@ -10,6 +10,7 @@ import sys
 import shutil as _shutil
 import yaml
 from jinja2 import Environment, FileSystemLoader
+import typer
 
 # debootstrap などが /usr/sbin/ に入っている場合があるので、
 # チェックを行う前に sbin を PATH に含める
@@ -17,6 +18,14 @@ os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + "/usr/sbin"
 
 ROOT     = Path(__file__).resolve().parent.parent
 CFG_BASE = ROOT / "config"
+
+TMPFS_SIZE = os.getenv("OYO_TMPFS_SIZE", "8G")   # 例: 8G, 16G, 80%
+
+def _mount_tmpfs(path: Path):
+    "path を tmpfs にマウント（空でも中身があっても強制マウント）"
+    _run(["sudo", "mount", "-t", "tmpfs",
+          "-o", f"size={TMPFS_SIZE},mode=0755", "tmpfs", str(path)])
+    print(f"Mounted tmpfs ({TMPFS_SIZE}) on {path}")
 
 def _render_brand_template(template_name: str, dest_path: Path, context: dict):
     """config/brand/<brand>/templates からテンプレートを探し、
@@ -134,6 +143,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 REQUIRED_COMMANDS = [
     "sudo",
     "debootstrap",
+    "mmdebstrap",
     "grub-mkrescue",
     "mksquashfs",
     "xorriso",
@@ -180,10 +190,17 @@ CHROOT = WORK / "chroot"
 ISO    = WORK / "iso"
 LOG    = ROOT / "log"
 
-def initialize():
+def initialize(use_tmpfs: bool = False):
     """work/ と log/ のディレクトリを作成"""
     # ホスト依存チェック
     _check_host_dependencies()
+
+    # ① 先に mount ポイント（WORK）を作成
+    WORK.mkdir(parents=True, exist_ok=True)
+    # ② フラグが True のときだけ tmpfs をマウント
+    if use_tmpfs:
+        _mount_tmpfs(WORK)
+        print("tmpfs created")
     for d in (WORK, ISO, CHROOT, LOG):
         d.mkdir(parents=True, exist_ok=True)
     print(f"Created work and log directories: {WORK}, {LOG}")
@@ -298,10 +315,13 @@ def _prepare_chroot(codename: str):
     # chroot ディレクトリを再作成
     CHROOT.mkdir(parents=True, exist_ok=True)
 
-    # ① debootstrap でベースシステム投入
+    # mmdebstrap での chroot 作成（並列ダウンロード・複数ミラー対応）
     _run([
-        "sudo", "debootstrap",
-        "--arch=amd64",
+        "sudo", "mmdebstrap",
+        "--architectures=amd64",
+        "--variant=minbase",
+        # bash (/bin/bash) と coreutils (/usr/bin/env) を含める
+        "--include=bash,coreutils",
         codename,
         str(CHROOT),
         "http://deb.debian.org/debian"
@@ -387,13 +407,68 @@ def _install_packages():
         "DEBCONF_NONINTERACTIVE_SEEN=true",
         "APT_LISTCHANGES_FRONTEND=none"
     ]
-    _run(["sudo", "chroot", str(CHROOT)] + env + ["apt-get", "update"])
+    # ── chroot 内でまず apt-fast（+aria2）をインストール ──
+    # 1) 最新リスト取得
     _run([
-        "sudo", "chroot", str(CHROOT)
-    ] + env + [
-        "apt-get", "install", "-y",
-        "--no-install-recommends"
+        "sudo", "chroot", str(CHROOT),
+        "apt-get", "update"
+    ])
+
+    # ── chroot 内で curl/wget と aria2 を入れる ──
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "apt-get", "update"
+    ])
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "apt-get", "install", "-y", "--no-install-recommends",
+        "aria2", "wget", "curl"
+    ])
+
+    # ── chroot 内で必要なツール／シェルを先にインストール ──
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "apt-get", "update"
+    ])
+
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "apt-get", "install", "-y", "--no-install-recommends",
+        "aria2", "wget", "curl", "bash", "coreutils"
+    ])
+
+    # ── GitHub から apt-fast スクリプトを直接ホスト経由で chroot 下に配置 ──
+    # 1) ホスト上でダウンロード
+    _run([
+        "sudo", "wget", "-qO",
+        str(CHROOT / "usr" / "local" / "bin" / "apt-fast"),
+        "https://raw.githubusercontent.com/ilikenwf/apt-fast/master/apt-fast"
+    ])
+    # 2) 実行権限を付与
+    _run([
+        "sudo", "chmod", "+x",
+        str(CHROOT / "usr" / "local" / "bin" / "apt-fast")
+    ])
+    typer.secho(">> Installed apt-fast script in chroot’s /usr/local/bin", fg=typer.colors.BLUE)
+
+    # ── chroot の標準 PATH（/usr/bin）に見えるようシンボリックリンクを作成 ──
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "ln", "-sf",
+        "/usr/local/bin/apt-fast",   # chroot 内から見た元パス
+        "/usr/bin/apt-fast"          # chroot 内から見たリンク先
+    ])
+    typer.secho(">> chroot 内で /usr/bin/apt-fast シンボリックリンクを作成しました", fg=typer.colors.BLUE)
+
+
+    # ── apt-fast でパッケージを並列インストール ──
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "/usr/bin/apt-fast",
+        "install",
+        "-y", "--no-install-recommends"
     ] + dpkg_opts + pkgs)
+
     print("Packages installed:", pkgs)
 
 def _apply_os_release():
@@ -576,12 +651,15 @@ def build_iso():
         "--include=usr/share/",            # usr/share 以下を辿るため
         "--include=usr/share/grub/",       # シェアド・grub ディレクトリ
         "--include=usr/share/grub/**",     # テーマやロケール等
+        "--include=usr/lib/grub/i386-pc/",    "--include=usr/lib/grub/i386-pc/**",
+        "--include=usr/lib/grub/x86_64-efi/", "--include=usr/lib/grub/x86_64-efi/**",
         # 4) squashfs の置き場 live/ 以下
         "--include=live/", "--include=live/**",
         # 5) それ以外は不要
         "--exclude=*",
         f"{CHROOT}/", f"{ISO}/"
     ])
+
     print("ISO root prepared (with /proc, /sys, /dev excluded).")
 
     # ─── Plymouth テンプレートがあればここで適用 ───
@@ -689,8 +767,8 @@ def build_iso():
     ])
     print(f"Squashfs image created at {squashfs}")
 
-    # ISO イメージを作成
-    logger.info("Creating ISO…")
+    # ─── ISO イメージを作成 (BIOS＋UEFI のハイブリッド) ───
+    logger.info("Creating hybrid ISO (BIOS + UEFI)…")
     _make_iso()
 
     # ——— マウントしたものをアンマウント ———
@@ -749,9 +827,10 @@ def _make_iso():
 
 def clean_work():
     """work/ 以下をクリーンアップ"""
-    # ① まず残っている bind マウントを外す
-    import os
+    import subprocess, os
     devnull = subprocess.DEVNULL if os.path.exists(os.devnull) else None
+
+    # ① まず残っている bind マウントを外す
     for fs in (
         "var/cache/apt/archives",
         "dev/pts",
@@ -766,27 +845,23 @@ def clean_work():
         # 存在していればアンマウントを試みる
         if target.exists():
             try:
-                # stdout/stderr を /dev/null に捨てる
-                if devnull is not None:
-                    subprocess.run(
-                        ["sudo", "umount", "-l", str(target)],
-                        stdout=devnull,
-                        stderr=devnull,
-                        check=False
-                    )
-                else:
-                    # /dev/null がないならリダイレクトせず実行
-                    subprocess.run(
-                        ["sudo", "umount", "-l", str(target)],
-                        check=False
-                    )
+                cmd = ["sudo", "umount", "-l", str(target)]
+                subprocess.run(cmd, stdout=devnull, stderr=devnull, check=False)
             except FileNotFoundError:
-                # 念のため、失敗しても先に進める
+                  # 念のため、失敗しても先に進める
                 pass
 
-    # ② work ディレクトリを丸ごと削除
+    # ② tmpfs が残っている限り、二重マウントも含めてアンマウント
+    while True:
+        # mountpoint -q はマウントされていれば 0 を返します
+        result = subprocess.run(["mountpoint", "-q", str(WORK)])
+        if result.returncode != 0:
+            break
+        subprocess.run(["sudo", "umount", "-l", str(WORK)], check=False)
+
+    # ③ work ディレクトリを丸ごと削除＆再作成
     if WORK.exists():
         _run(["sudo", "rm", "-rf", str(WORK)])
     WORK.mkdir(parents=True, exist_ok=True)
-    print(f"Cleaned work directory: {WORK}")
 
+    print(f"Cleaned work directory (and unmounted tmpfs): {WORK}")

@@ -11,6 +11,7 @@ import shutil as _shutil
 import yaml
 from jinja2 import Environment, FileSystemLoader
 import typer
+import atexit
 
 # debootstrap などが /usr/sbin/ に入っている場合があるので、
 # チェックを行う前に sbin を PATH に含める
@@ -19,6 +20,23 @@ os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + "/usr/sbin"
 ROOT     = Path(__file__).resolve().parent.parent
 CFG_BASE = ROOT / "config"
 
+# アンマウント対象を記録するリスト
+_MOUNTS: list[Path] = []
+
+def _register_unmount(path: Path):
+    if path not in _MOUNTS:
+        _MOUNTS.append(path)
+
+def _cleanup_mounts():
+    for m in reversed(_MOUNTS):
+        subprocess.run(
+            ["sudo", "umount", "-l", str(m)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+
+# プログラム終了時に必ず呼ぶ
+atexit.register(_cleanup_mounts)
+
 TMPFS_SIZE = os.getenv("OYO_TMPFS_SIZE", "8G")   # 例: 8G, 16G, 80%
 
 def _mount_tmpfs(path: Path):
@@ -26,6 +44,7 @@ def _mount_tmpfs(path: Path):
     _run(["sudo", "mount", "-t", "tmpfs",
           "-o", f"size={TMPFS_SIZE},mode=0755", "tmpfs", str(path)])
     print(f"Mounted tmpfs ({TMPFS_SIZE}) on {path}")
+    _register_unmount(path)
 
 def _render_brand_template(template_name: str, dest_path: Path, context: dict):
     """config/brand/<brand>/templates からテンプレートを探し、
@@ -573,12 +592,14 @@ def build_iso():
         target = CHROOT / fs
         target.mkdir(exist_ok=True)
         _run(["sudo", "mount", "--bind", f"/{fs}", str(target)])
+        _register_unmount(target)
         
     # ホストの APT キャッシュを使う (/var/cache/apt/archives)
     print("Binding host APT cache into chroot…")
     apt_cache = CHROOT / "var" / "cache" / "apt" / "archives"
     apt_cache.mkdir(parents=True, exist_ok=True)
-    _run(["sudo", "mount", "--bind", "/var/cache/apt/archives", str(apt_cache)])  
+    _run(["sudo", "mount", "--bind", "/var/cache/apt/archives", str(apt_cache)])
+    _register_unmount(apt_cache)  
 
     # ——— post-install hooks を実行 ———
     print("Running pre-install hooks…")
@@ -758,53 +779,24 @@ def build_iso():
     # squashfs イメージを作成
     squashfs = live_dir / "filesystem.squashfs"
     print("Creating squashfs image…")
+
+    # squashfs 生成の高速化: LZ4 + 全コア使用
+    cpus = os.cpu_count() or 1
+    
     _run([
         "sudo", "mksquashfs",
         str(CHROOT),
         str(squashfs),
-        "-e", "boot",      # /boot は別途コピー
-        "-e", "live"       # /live は別途コピー
+        "-comp", "lz4",             # 圧縮方式: lz4（高速）
+        "-processors", str(cpus),   # 全コア数を指定（1以上）
+        "-e", "boot",               # /boot は別途コピー
+        "-e", "live"                # /live は別途コピー
     ])
     print(f"Squashfs image created at {squashfs}")
 
     # ─── ISO イメージを作成 (BIOS＋UEFI のハイブリッド) ───
     logger.info("Creating hybrid ISO (BIOS + UEFI)…")
     _make_iso()
-
-    # ——— マウントしたものをアンマウント ———
-    print("Unmounting /proc, /sys, /dev from chroot…")
-    # アンマウント時の「not mounted」を無視する
-    import subprocess
-    for fs in ("dev", "sys", "proc"):
-        target = CHROOT / fs
-        try:
-            subprocess.run(
-                ["sudo", "umount", str(target)],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-        except subprocess.CalledProcessError:
-            # 既にアンマウント済み or 存在しない場合はスキップ
-            logger.info(f"{fs} not mounted, skipping unmount.")
-
-        
-    # APT キャッシュのバインドも解除（not mounted エラーは無視）
-    print("Unmounting host APT cache from chroot…")
-    import subprocess
-    try:
-        # すでに root なら sudo を外す
-        cmd = ["sudo", "umount", str(apt_cache)]
-        if IS_ROOT and cmd[0] == "sudo":
-            cmd = cmd[1:]
-        subprocess.run(
-            cmd,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-    except subprocess.CalledProcessError:
-        logger.info("host APT cache not mounted, skipping unmount.")
 
     # 終了ログ
     logger.info("=== Build finished ===")

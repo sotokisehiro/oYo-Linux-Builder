@@ -66,18 +66,7 @@ def build(
         initialize(use_tmpfs=tmpfs)
         cmd_build()
         typer.secho("ビルドが完了しました。", fg=typer.colors.GREEN)
-        
-        # ─── work/tmpfs をアンマウント ───
-        import subprocess
-        # WORK がまだマウントされている限りループでアンマウント
-        while subprocess.run(["mountpoint", "-q", str(WORK)]).returncode == 0:
-            subprocess.run(
-                ["sudo", "umount", "-l", str(WORK)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False
-            )
-        typer.secho(f"Unmounted tmpfs on {WORK}", fg=typer.colors.BLUE)
+
     except Exception as e:
         typer.secho(f"[ERROR] {e}", fg=typer.colors.RED)
         raise typer.Exit(code=1)

@@ -334,18 +334,33 @@ def _prepare_chroot(codename: str):
     # chroot ディレクトリを再作成
     CHROOT.mkdir(parents=True, exist_ok=True)
 
-    # mmdebstrap での chroot 作成（並列ダウンロード・複数ミラー対応）
+    # ── 1) パッケージ一覧を収集 ──
+    pkg_list: list[str] = []
+    for cfg in get_configs():
+        pkgfile = cfg / "packages.txt"
+        if pkgfile.exists():
+            pkg_list += [
+                p.strip() for p in pkgfile.read_text().splitlines()
+                if p.strip() and not p.strip().startswith("#")
+            ]
+
+    # ── 2) mmdebstrap に渡す必須パッケージ群 ──
+    base_pkgs = ["bash", "coreutils"]
+    include_pkgs = sorted(set(base_pkgs + pkg_list))
+    include_opt = "--include=" + ",".join(include_pkgs)
+
+    print("Deploying base system via mmdebstrap (incl. all packages)…")
     _run([
         "sudo", "mmdebstrap",
         "--architectures=amd64",
         "--variant=minbase",
-        # bash (/bin/bash) と coreutils (/usr/bin/env) を含める
-        "--include=bash,coreutils",
+        include_opt,
         codename,
         str(CHROOT),
         "http://deb.debian.org/debian"
     ])
-    print(f"Base system deployed via debootstrap ({codename}).")
+
+    print(f"Base system + packages deployed via mmdebstrap ({codename}).")
 
     # ——— live ユーザーを追加＆パスワード設定 ———
     # dash（/bin/sh）が chroot にあるので sh -c を使う
@@ -383,112 +398,6 @@ def _copy_overlay():
 
 
     print("Overlay files copied.")
-
-def _install_packages():
-    """common→flavor→lang の順で packages.txt をマージしてインストール"""
-    lines: list[str] = []
-    print(">>> _install_packages: merging packages from:")
-    for cfg in get_configs():
-        pkgfile = cfg / "packages.txt"
-        if pkgfile.exists():
-            print(f"    - {pkgfile}")
-            lines.extend(pkgfile.read_text().splitlines())
-        else:
-            print(f"    x {pkgfile} (not found)")
-
-    # 空行・コメントを除去して最終リスト化
-    pkgs = [
-        l.strip()
-        for l in lines
-        if l.strip() and not l.strip().startswith("#")
-    ]
-    print(">>> merged pkgs:", pkgs)
-
-    # ライブに必須の追加パッケージは確実に含める
-    for extra in ("dconf-cli", "linux-image-amd64", "initramfs-tools", "live-boot"):
-        if extra not in pkgs:
-            pkgs.append(extra)
-    
-    print("DEBUG: merged packages=", pkgs)
-    
-    # ライブ起動に必要なカーネル・initrd 関連パッケージを必ず追加
-    for extra in ("dconf-cli", "linux-image-amd64", "initramfs-tools", "live-boot"):
-        if extra not in pkgs:
-            pkgs.append(extra)
-
-    # noninteractive モードでプロンプトを抑制
-    env = ["env", "DEBIAN_FRONTEND=noninteractive", "DEBCONF_NONINTERACTIVE_SEEN=true"]
-    dpkg_opts = ["-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"]
-    # non-interactive かつ推奨パッケージを入れないモードでインストール
-    env = [
-        "env",
-        "DEBIAN_FRONTEND=noninteractive",
-        "DEBCONF_NONINTERACTIVE_SEEN=true",
-        "APT_LISTCHANGES_FRONTEND=none"
-    ]
-    # ── chroot 内でまず apt-fast（+aria2）をインストール ──
-    # 1) 最新リスト取得
-    _run([
-        "sudo", "chroot", str(CHROOT),
-        "apt-get", "update"
-    ])
-
-    # ── chroot 内で curl/wget と aria2 を入れる ──
-    _run([
-        "sudo", "chroot", str(CHROOT),
-        "apt-get", "update"
-    ])
-    _run([
-        "sudo", "chroot", str(CHROOT),
-        "apt-get", "install", "-y", "--no-install-recommends",
-        "aria2", "wget", "curl"
-    ])
-
-    # ── chroot 内で必要なツール／シェルを先にインストール ──
-    _run([
-        "sudo", "chroot", str(CHROOT),
-        "apt-get", "update"
-    ])
-
-    _run([
-        "sudo", "chroot", str(CHROOT),
-        "apt-get", "install", "-y", "--no-install-recommends",
-        "aria2", "wget", "curl", "bash", "coreutils"
-    ])
-
-    # ── GitHub から apt-fast スクリプトを直接ホスト経由で chroot 下に配置 ──
-    # 1) ホスト上でダウンロード
-    _run([
-        "sudo", "wget", "-qO",
-        str(CHROOT / "usr" / "local" / "bin" / "apt-fast"),
-        "https://raw.githubusercontent.com/ilikenwf/apt-fast/master/apt-fast"
-    ])
-    # 2) 実行権限を付与
-    _run([
-        "sudo", "chmod", "+x",
-        str(CHROOT / "usr" / "local" / "bin" / "apt-fast")
-    ])
-    typer.secho(">> Installed apt-fast script in chroot’s /usr/local/bin", fg=typer.colors.BLUE)
-
-    # ── chroot の標準 PATH（/usr/bin）に見えるようシンボリックリンクを作成 ──
-    _run([
-        "sudo", "chroot", str(CHROOT),
-        "ln", "-sf",
-        "/usr/local/bin/apt-fast",   # chroot 内から見た元パス
-        "/usr/bin/apt-fast"          # chroot 内から見たリンク先
-    ])
-    typer.secho(">> chroot 内で /usr/bin/apt-fast シンボリックリンクを作成しました", fg=typer.colors.BLUE)
-
-
-    # ── apt-fast でパッケージを並列インストール ──
-    _run([
-        "sudo", "chroot", str(CHROOT),
-        "/usr/bin/apt-fast",
-        "install",
-        "-y", "--no-install-recommends"
-    ] + dpkg_opts + pkgs)
-
-    print("Packages installed:", pkgs)
 
 def _apply_os_release():
     """os-release をテンプレート or overlay から設定"""
@@ -604,9 +513,6 @@ def build_iso():
     # ——— post-install hooks を実行 ———
     print("Running pre-install hooks…")
     _run_hooks("pre-install")
-
-    print("Installing packages…")
-    _install_packages()
     
     # ——— post-install hooks を実行 ———
     print("Running post-install hooks…")

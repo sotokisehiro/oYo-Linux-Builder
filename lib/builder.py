@@ -353,8 +353,16 @@ def _prepare_chroot(codename: str):
     _run([
         "sudo", "mmdebstrap",
         "--architectures=amd64",
-        "--variant=minbase",
+        "--variant=important",
+
+        # ── 並列ダウンロード・リトライ設定 ──
+        "--aptopt=Acquire::Queue-Mode \"host\";",
+        "--aptopt=Acquire::Retries \"3\";",
+
+        # ── あらかじめ集めたパッケージ群 ──
         include_opt,
+
+        # ── その他の引数 ──
         codename,
         str(CHROOT),
         "http://deb.debian.org/debian"
@@ -547,6 +555,7 @@ def build_iso():
     _run(["sudo", "cp", str(kernel_src), str(live_chroot / "vmlinuz")])
     _run(["sudo", "cp", str(initrd_src), str(live_chroot / "initrd.img")])
     print(f"Live kernel ({kernel_src.name}) and initrd ({initrd_src.name}) copied.")
+    
     print("Applying dconf settings…")
     _apply_dconf()
 
@@ -695,7 +704,6 @@ def build_iso():
         str(squashfs),
         "-comp", "lz4",             # 圧縮方式: lz4（高速）
         "-processors", str(cpus),   # 全コア数を指定（1以上）
-        "-e", "boot",               # /boot は別途コピー
         "-e", "live"                # /live は別途コピー
     ])
     print(f"Squashfs image created at {squashfs}")

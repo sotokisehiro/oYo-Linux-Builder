@@ -16,12 +16,9 @@ dictionaries-common
 cracklib-runtime
 libpam-pwquality
 
-# GeoIP 自動検出用
 qt6-location-plugins
 geoclue-2.0
 curl
-
-# LUKS 暗号化サポート
 cryptsetup
 calamares
 
@@ -29,8 +26,11 @@ rsync
 locate
 
 grub-common
-grub-pc-bin
 grub-efi-amd64-bin
+grub-efi-amd64-signed
+grub-pc-bin
+grub2-common
+
 shim-signed
 efibootmgr
 

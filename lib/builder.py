@@ -13,6 +13,7 @@ from jinja2 import Environment, FileSystemLoader
 import typer
 import atexit
 
+
 # debootstrap などが /usr/sbin/ に入っている場合があるので、
 # チェックを行う前に sbin を PATH に含める
 os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + "/usr/sbin"
@@ -596,12 +597,33 @@ def build_iso():
         f"{CHROOT}/", f"{ISO}/"
     ])
 
+    # ── Secure Boot 対応の shim + grub を配置 ──
+    efi_boot = ISO / "EFI" / "boot"
+    efi_boot.mkdir(parents=True, exist_ok=True)
+
+    shim_path = CHROOT / "usr/lib/shim/shimx64.efi.signed"
+    grub_signed_path = CHROOT / "usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed"
+
+    bootx64 = efi_boot / "bootx64.efi"
+    grubx64 = efi_boot / "grubx64.efi"
+
+    if shim_path.exists() and grub_signed_path.exists():
+        _run(["sudo", "cp", str(shim_path), str(bootx64)])
+        _run(["sudo", "cp", str(grub_signed_path), str(grubx64)])
+        print("Secure Boot対応: shimx64.efi.signed → bootx64.efi、grubx64.efi.signed → grubx64.efi を配置しました")
+    else:
+        print("Secure Boot用の shim または grubx64.efi.signed が見つかりませんでした。")
+
+    # GRUBモジュールを ISO にコピー
+    grub_mod_src = CHROOT / "usr/lib/grub/x86_64-efi"
+    grub_mod_dest = ISO / "boot/grub"
+    grub_mod_dest.mkdir(parents=True, exist_ok=True)
+    _run(["sudo", "cp", "-r", str(grub_mod_src) + "/", str(grub_mod_dest)])
+    print("GRUBモジュール (x86_64-efi) を boot/grub 以下にコピーしました")
+
     print("ISO root prepared (with /proc, /sys, /dev excluded).")
 
     # ─── Plymouth テンプレートがあればここで適用 ───
-    from pathlib import Path
-    import yaml
-
     # 1) brand レイヤーを探して paths を決定
     brand = os.getenv("OYO_BRAND", "default")
     brand_layer = next(
@@ -637,8 +659,7 @@ def build_iso():
             )
             print(f"Applied Plymouth config from {tpl}")
     
-    # 【Brand テンプレートがあれば BIOS/UEFI 両方の grub.cfg を上書き】
-    from pathlib import Path
+    # 【Brand テンプレートがあれば BIOS/UEFI 両方の grub.cfg を上書き
     brand = os.getenv("OYO_BRAND", "default")
     brand_layer = next(
         (d for d in CFG_BASE.iterdir() if d.is_dir() and d.name.endswith("_brand")),
@@ -660,13 +681,8 @@ def build_iso():
                 ISO / "boot" / "grub" / "grub.cfg",
                 context
             )
-            # UEFI 向け grub.cfg
-            _render_brand_template(
-                "grub.cfg.j2",
-                ISO / "EFI" / "BOOT" / "grub.cfg",
-                context
-            )
-            print(f"Applied branded grub.cfg from {grub_tpl} to BIOS and UEFI")
+
+    print(f"Applied branded grub.cfg from {grub_tpl} to BIOS and UEFI")
     
     # ——— ISO ルートに live カーネル/初期RAMをコピー ———
     live_dir = ISO / "live"

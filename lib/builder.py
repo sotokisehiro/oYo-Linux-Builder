@@ -577,7 +577,7 @@ def build_iso():
         "--include=usr/share/calamares/", 
         "--include=usr/share/calamares/**",
         # 1) boot/ 以下を丸ごと
-        "--include=boot/", "--include=boot/**",
+#        "--include=boot/", "--include=boot/**",
         # 2) UEFI 用の EFI ディレクトリ
         "--include=EFI/",  "--include=EFI/**",
         # 3) GRUB モジュール（i386-pc, x86_64-efi など）
@@ -598,28 +598,22 @@ def build_iso():
     ])
 
     # ── Secure Boot 対応の shim + grub を配置 ──
-    efi_boot = ISO / "EFI" / "boot"
+    efi_boot = ISO / "EFI" / "BOOT"
     efi_boot.mkdir(parents=True, exist_ok=True)
 
-    shim_path = CHROOT / "usr/lib/shim/shimx64.efi.signed"
-    grub_signed_path = CHROOT / "usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed"
+    # Secure Boot未対応UEFI用 grubx64.efi を fallback として自作
+    fallback_efi = efi_boot / "bootx64.efi"
+    _make_uefi_boot_image(
+        grub_dir=CHROOT / "usr/lib/grub/x86_64-efi",
+        output_efi=fallback_efi
+    )
 
-    bootx64 = efi_boot / "bootx64.efi"
-    grubx64 = efi_boot / "grubx64.efi"
-
-    if shim_path.exists() and grub_signed_path.exists():
-        _run(["sudo", "cp", str(shim_path), str(bootx64)])
-        _run(["sudo", "cp", str(grub_signed_path), str(grubx64)])
-        print("Secure Boot対応: shimx64.efi.signed → bootx64.efi、grubx64.efi.signed → grubx64.efi を配置しました")
-    else:
-        print("Secure Boot用の shim または grubx64.efi.signed が見つかりませんでした。")
-
-    # GRUBモジュールを ISO にコピー
-    grub_mod_src = CHROOT / "usr/lib/grub/x86_64-efi"
-    grub_mod_dest = ISO / "boot/grub"
-    grub_mod_dest.mkdir(parents=True, exist_ok=True)
-    _run(["sudo", "cp", "-r", str(grub_mod_src) + "/", str(grub_mod_dest)])
-    print("GRUBモジュール (x86_64-efi) を boot/grub 以下にコピーしました")
+#    # GRUBモジュールを ISO にコピー
+#    grub_mod_src = CHROOT / "usr/lib/grub/x86_64-efi"
+#    grub_mod_dest = ISO / "boot/grub"
+#    grub_mod_dest.mkdir(parents=True, exist_ok=True)
+#    _run(["sudo", "cp", "-r", str(grub_mod_src) + "/", str(grub_mod_dest)])
+#    print("GRUBモジュール (x86_64-efi) を boot/grub 以下にコピーしました")
 
     print("ISO root prepared (with /proc, /sys, /dev excluded).")
 
@@ -787,3 +781,26 @@ def clean_work():
     WORK.mkdir(parents=True, exist_ok=True)
 
     print(f"Cleaned work directory (and unmounted tmpfs): {WORK}")
+
+def _make_uefi_boot_image(grub_dir: Path, output_efi: Path):
+    """
+    Secure Boot 無効用の UEFI bootx64.efi を grub-mkimage で生成。
+    linuxefi を含めず、従来の linux/initrd を使うシンプルな構成。
+    """
+    modules = [
+        "part_gpt", "part_msdos", "fat", "iso9660",
+        "normal", "linux", "configfile",
+        "search", "search_fs_uuid", "search_label",
+        "terminal", "echo", "gfxterm"
+    ]
+
+    _run([
+        "grub-mkimage",
+        "-O", "x86_64-efi",
+        "-d", "/usr/lib/grub/x86_64-efi",  # モジュールの明示的パス
+        "-p", "/boot/grub",                 # GRUB 内部パス
+        "-o", str(output_efi),              # 出力先 EFI ファイル
+        *modules
+    ])
+
+    print(f"[GRUB EFI] linuxefi を除いた bootx64.efi を生成しました: {output_efi}")

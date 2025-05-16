@@ -348,6 +348,25 @@ def _prepare_chroot(codename: str):
     # ── 2) mmdebstrap に渡す必須パッケージ群 ──
     base_pkgs = ["bash", "coreutils"]
     include_pkgs = sorted(set(base_pkgs + pkg_list))
+
+    #signed kernel を探して include_pkgs に追加
+    print("Probing for latest linux-image-*-signed package…")
+    try:
+        result = subprocess.run(
+            ["apt-cache", "search", "^linux-image-.*-signed$"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=True
+        )
+        candidates = [line.split()[0] for line in result.stdout.strip().splitlines()]
+        if candidates:
+            selected_kernel = sorted(candidates)[-1]
+            print(f"Detected signed kernel: {selected_kernel}")
+            include_pkgs.append(selected_kernel)
+        else:
+            print("[Warning] No signed kernel found in apt-cache")
+    except Exception as e:
+        print(f"[Warning] Could not detect signed kernel automatically: {e}")
+
+    #include_opt を定義する
     include_opt = "--include=" + ",".join(include_pkgs)
 
     print("Deploying base system via mmdebstrap (incl. all packages)…")
@@ -584,10 +603,14 @@ def build_iso():
         "--include=usr/",                  # usr/lib 以下を辿るため
         "--include=usr/lib/",              # usr/lib ディレクトリ自体
         "--include=usr/lib/grub/",         # grub モジュール基本フォルダ
-        "--include=usr/lib/grub/**",       # モジュール全ファイル
+        "--include=usr/lib/grub/**",       # grubモジュール全ファイル
+        "--include=usr/lib/shim/",         # shim モジュール基本フォルダ
+        "--include=usr/lib/shim/**",       # shimモジュール全ファイル
         "--include=usr/share/",            # usr/share 以下を辿るため
         "--include=usr/share/grub/",       # シェアド・grub ディレクトリ
         "--include=usr/share/grub/**",     # テーマやロケール等
+        "--include=usr/share/shim/",       # シェアド・shim ディレクトリ
+        "--include=usr/share/shim/**",     # shim
         "--include=usr/lib/grub/i386-pc/",    "--include=usr/lib/grub/i386-pc/**",
         "--include=usr/lib/grub/x86_64-efi/", "--include=usr/lib/grub/x86_64-efi/**",
         # 4) squashfs の置き場 live/ 以下
@@ -601,19 +624,21 @@ def build_iso():
     efi_boot = ISO / "EFI" / "BOOT"
     efi_boot.mkdir(parents=True, exist_ok=True)
 
-    # Secure Boot未対応UEFI用 grubx64.efi を fallback として自作
-    fallback_efi = efi_boot / "bootx64.efi"
-    _make_uefi_boot_image(
-        grub_dir=CHROOT / "usr/lib/grub/x86_64-efi",
-        output_efi=fallback_efi
-    )
+    # Secure Boot 対応用の shim + grubx64.efi を配置
+    shim_src  = CHROOT / "usr/lib/shim/shimx64.efi.signed"
+    mm_src    = CHROOT / "usr/lib/shim/mmx64.efi"
 
-#    # GRUBモジュールを ISO にコピー
-#    grub_mod_src = CHROOT / "usr/lib/grub/x86_64-efi"
-#    grub_mod_dest = ISO / "boot/grub"
-#    grub_mod_dest.mkdir(parents=True, exist_ok=True)
-#    _run(["sudo", "cp", "-r", str(grub_mod_src) + "/", str(grub_mod_dest)])
-#    print("GRUBモジュール (x86_64-efi) を boot/grub 以下にコピーしました")
+    # GRUB EFI（Microsoft署名済）をそのままコピー
+    signed_grub = CHROOT / "usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed"
+    _run(["sudo", "cp", str(signed_grub), str(efi_boot / "grubx64.efi")])
+    print("署名付き grubx64.efi をコピーしました")
+
+    # shimx64 を BOOTX64.EFI として配置
+    _run(["sudo", "cp", str(shim_src), str(efi_boot / "BOOTX64.EFI")])
+    _run(["sudo", "cp", str(mm_src), str(efi_boot / "mmx64.efi")])
+#    shutil.copy2(shim_src, efi_boot / "BOOTX64.EFI")
+#    shutil.copy2(mm_src,   efi_boot / "mmx64.efi")
+    print("Secure Boot 用の shimx64.efi, grubx64.efi, mmx64.efi を配置しました")
 
     print("ISO root prepared (with /proc, /sys, /dev excluded).")
 
@@ -782,25 +807,25 @@ def clean_work():
 
     print(f"Cleaned work directory (and unmounted tmpfs): {WORK}")
 
-def _make_uefi_boot_image(grub_dir: Path, output_efi: Path):
-    """
-    Secure Boot 無効用の UEFI bootx64.efi を grub-mkimage で生成。
-    linuxefi を含めず、従来の linux/initrd を使うシンプルな構成。
-    """
-    modules = [
-        "part_gpt", "part_msdos", "fat", "iso9660",
-        "normal", "linux", "configfile",
-        "search", "search_fs_uuid", "search_label",
-        "terminal", "echo", "gfxterm"
-    ]
-
-    _run([
-        "grub-mkimage",
-        "-O", "x86_64-efi",
-        "-d", "/usr/lib/grub/x86_64-efi",  # モジュールの明示的パス
-        "-p", "/boot/grub",                 # GRUB 内部パス
-        "-o", str(output_efi),              # 出力先 EFI ファイル
-        *modules
-    ])
-
-    print(f"[GRUB EFI] linuxefi を除いた bootx64.efi を生成しました: {output_efi}")
+#def _make_uefi_boot_image(grub_dir: Path, output_efi: Path):
+#    """
+#    Secure Boot 無効用の UEFI bootx64.efi を grub-mkimage で生成。
+#    linuxefi を含めず、従来の linux/initrd を使うシンプルな構成。
+#    """
+#    modules = [
+#        "part_gpt", "part_msdos", "fat", "iso9660",
+#        "normal", "linux", "configfile",
+#        "search", "search_fs_uuid", "search_label",
+#        "terminal", "echo", "gfxterm"
+#    ]
+#
+#    _run([
+#        "grub-mkimage",
+#        "-O", "x86_64-efi",
+#        "-d", "/usr/lib/grub/x86_64-efi",  # モジュールの明示的パス
+#        "-p", "/boot/grub",                 # GRUB 内部パス
+#        "-o", str(output_efi),              # 出力先 EFI ファイル
+#        *modules
+#    ])
+#
+#    print(f"[GRUB EFI] linuxefi を除いた bootx64.efi を生成しました: {output_efi}")

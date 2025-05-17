@@ -111,13 +111,47 @@ def get_configs() -> list[Path]:
                 configs.append(sub)
 
     return configs
+
+def get_hook_configs() -> list[Path]:
+    """
+    hooks（pre-install / post-install）の対象となる層のみ返す。
+    flavor層は除外する。
++    """
+    flavor = os.getenv("OYO_FLAVOR", "common")
+    lang   = os.getenv("OYO_LANG",    "en")
+    brand  = os.getenv("OYO_BRAND",   "default")
+
+    configs: list[Path] = []
+    for grp in sorted(CFG_BASE.iterdir()):
+        if not grp.is_dir() or "_" not in grp.name:
+            continue
+        _num, key = grp.name.split("_", 1)
+
+        # common はそのまま対象
+        if key == "common":
+            configs.append(grp)
+
+        # lang, brand はサブディレクトリ指定で対象にする
+        elif key == "lang":
+            sub = grp / lang
+            if sub.is_dir():
+                configs.append(sub)
+        elif key == "brand":
+            sub = grp / brand
+            if sub.is_dir():
+                configs.append(sub)
+
+        # flavor は対象外
+        else:
+            continue
+    return configs
     
 def _run_hooks(stage: str):
     """
     common→flavor→lang→brand の各 config/hooks/<stage>.d/*.sh を
     chroot 内で順に実行する。
     """
-    for cfg in get_configs():
+    for cfg in get_hook_configs():
         hooks_dir = cfg / "hooks" / f"{stage}.d"
         if not hooks_dir.is_dir():
             continue
@@ -806,26 +840,3 @@ def clean_work():
     WORK.mkdir(parents=True, exist_ok=True)
 
     print(f"Cleaned work directory (and unmounted tmpfs): {WORK}")
-
-#def _make_uefi_boot_image(grub_dir: Path, output_efi: Path):
-#    """
-#    Secure Boot 無効用の UEFI bootx64.efi を grub-mkimage で生成。
-#    linuxefi を含めず、従来の linux/initrd を使うシンプルな構成。
-#    """
-#    modules = [
-#        "part_gpt", "part_msdos", "fat", "iso9660",
-#        "normal", "linux", "configfile",
-#        "search", "search_fs_uuid", "search_label",
-#        "terminal", "echo", "gfxterm"
-#    ]
-#
-#    _run([
-#        "grub-mkimage",
-#        "-O", "x86_64-efi",
-#        "-d", "/usr/lib/grub/x86_64-efi",  # モジュールの明示的パス
-#        "-p", "/boot/grub",                 # GRUB 内部パス
-#        "-o", str(output_efi),              # 出力先 EFI ファイル
-#        *modules
-#    ])
-#
-#    print(f"[GRUB EFI] linuxefi を除いた bootx64.efi を生成しました: {output_efi}")

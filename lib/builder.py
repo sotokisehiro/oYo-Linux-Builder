@@ -12,6 +12,8 @@ import yaml
 from jinja2 import Environment, FileSystemLoader
 import typer
 import atexit
+import textwrap
+import stat
 
 
 # debootstrap などが /usr/sbin/ に入っている場合があるので、
@@ -552,6 +554,10 @@ def build_iso():
 
     print("Copying overlay…")
     _copy_overlay()
+    
+    # ライブ時だけロック画面を無効化する自動起動を注入
+    print("Injecting live-session lock-disable script…")
+    inject_disable_lock(CHROOT)
 
     # ─── Calamares branding.desc をテンプレートで生成する ───
     print("Applying Calamares branding template…")
@@ -840,3 +846,45 @@ def clean_work():
     WORK.mkdir(parents=True, exist_ok=True)
 
     print(f"Cleaned work directory (and unmounted tmpfs): {WORK}")
+    
+def inject_disable_lock(rootfs_dir: Path) -> None:
+    """
+    ライブユーザー（名前が 'live'）で GNOME セッションが起動したときだけ
+    スクリーンロックと DPMS を無効化する自動起動項目を rootfs に注入する。
+    """
+    autostart_dir = rootfs_dir / "etc/xdg/autostart"
+    autostart_dir.mkdir(parents=True, exist_ok=True)
+
+    desktop_path = autostart_dir / "disable-live-lock.desktop"
+    desktop_content = textwrap.dedent("""\
+        [Desktop Entry]
+        Type=Application
+        Name=DisableLock (live only)
+        Exec=/usr/local/bin/disable-live-lock.sh
+        OnlyShowIn=GNOME;
+        NoDisplay=true
+        X-GNOME-Autostart-enabled=true
+    """)
+    desktop_path.write_text(desktop_content)
+
+    bin_dir = rootfs_dir / "usr/local/bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    script_path = bin_dir / "disable-live-lock.sh"
+    script_content = textwrap.dedent("""\
+        #!/usr/bin/env bash
+        # ライブセッション（ユーザー名が live）のときだけ設定を変更
+        if [ "$USER" = "live" ]; then
+          gsettings set org.gnome.desktop.session idle-delay 0
+          gsettings set org.gnome.desktop.screensaver lock-enabled false
+          gsettings set org.gnome.desktop.screensaver idle-activation-enabled false
+          # X11 では省電力機能も停止
+          command -v xset >/dev/null 2>&1 && xset s off -dpms
+        fi
+        exit 0
+    """)
+    script_path.write_text(script_content)
+    # 実行フラグを付与
+    script_path.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR |
+                      stat.S_IRGRP | stat.S_IXGRP |
+                      stat.S_IROTH | stat.S_IXOTH)

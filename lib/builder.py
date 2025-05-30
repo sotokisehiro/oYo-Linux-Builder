@@ -116,9 +116,8 @@ def get_configs() -> list[Path]:
 
 def get_hook_configs() -> list[Path]:
     """
-    hooks（pre-install / post-install）の対象となる層のみ返す。
-    flavor層は除外する。
-+    """
+    hooks（pre-install / post-install）の対象となる層をすべて返す。
+    """
     flavor = os.getenv("OYO_FLAVOR", "common")
     lang   = os.getenv("OYO_LANG",    "en")
     brand  = os.getenv("OYO_BRAND",   "default")
@@ -129,11 +128,13 @@ def get_hook_configs() -> list[Path]:
             continue
         _num, key = grp.name.split("_", 1)
 
-        # common はそのまま対象
+        # 共通処理：各レイヤーの該当サブディレクトリを追加
         if key == "common":
             configs.append(grp)
-
-        # lang, brand はサブディレクトリ指定で対象にする
+        elif key == "flavor":
+            sub = grp / flavor
+            if sub.is_dir():
+                configs.append(sub)
         elif key == "lang":
             sub = grp / lang
             if sub.is_dir():
@@ -143,9 +144,6 @@ def get_hook_configs() -> list[Path]:
             if sub.is_dir():
                 configs.append(sub)
 
-        # flavor は対象外
-        else:
-            continue
     return configs
     
 def _run_hooks(stage: str):
@@ -426,20 +424,6 @@ def _prepare_chroot(codename: str):
 
     print(f"Base system + packages deployed via mmdebstrap ({codename}).")
 
-    # ——— live ユーザーを追加＆パスワード設定 ———
-    # dash（/bin/sh）が chroot にあるので sh -c を使う
-    _run([
-        "sudo", "chroot", str(CHROOT),
-        "useradd", "-m", "-s", "/bin/bash", "live"
-    ])
-    _run([
-        "sudo", "chroot", str(CHROOT),
-        "sh", "-c",
-        "echo 'live:live' | chpasswd"
-    ])
-    print("ユーザー “live” を作成し、パスワードを “live” に設定しました。")
-
-
 def _copy_overlay():
     """common→flavor の overlay を順に chroot にコピー"""
     for cfg in get_configs():
@@ -506,13 +490,6 @@ def _apply_os_release():
             return
     raise FileNotFoundError("config/common/os-release をご確認ください。")
 
-def _apply_dconf():
-    """dconf のプロファイル方式で設定を更新"""
-    # overlay 配下に /etc/dconf/db/local.d と /etc/dconf/profile/user を置いている前提
-    print("Applying dconf settings via profile + update…")
-    _run(["sudo", "chroot", str(CHROOT), "dconf", "update"])
-    print("Applied dconf settings.")
-
 def _apply_calamares_branding():
     """
     Calamares の branding.desc を
@@ -554,6 +531,9 @@ def build_iso():
 
     print("Copying overlay…")
     _copy_overlay()
+    
+    print("User add live…")
+    create_live_user()
 
     # ─── Calamares branding.desc をテンプレートで生成する ───
     print("Applying Calamares branding template…")
@@ -583,7 +563,7 @@ def build_iso():
     _run_hooks("post-install")
 
     # ─── GUI起動のための systemd 設定 ───
-    print("Enabling graphical.target and GDM3 auto-login…")
+    print("Enabling graphical.target…")
     # 1) デフォルトターゲットを graphical.target に
     _run([
         "sudo", "chroot", str(CHROOT),
@@ -594,9 +574,6 @@ def build_iso():
 
     print("Applying OS release…")
     _apply_os_release()
-
-    print("Applying dconf settings…")
-    _apply_dconf()
 
     # ① live ディレクトリを作ってカーネルと initrd をワイルドカードで配置
     live_chroot = CHROOT / "live"
@@ -611,9 +588,6 @@ def build_iso():
     _run(["sudo", "cp", str(kernel_src), str(live_chroot / "vmlinuz")])
     _run(["sudo", "cp", str(initrd_src), str(live_chroot / "initrd.img")])
     print(f"Live kernel ({kernel_src.name}) and initrd ({initrd_src.name}) copied.")
-    
-    print("Applying dconf settings…")
-    _apply_dconf()
 
     # ——— ISO ルートを作成 ———
     print("Preparing ISO root…")
@@ -834,4 +808,26 @@ def clean_work():
     WORK.mkdir(parents=True, exist_ok=True)
 
     print(f"Cleaned work directory (and unmounted tmpfs): {WORK}")
+    
+def create_live_user():
+    """
+    chroot 環境内に live ユーザーを作成し、パスワードも設定します。
+ 
+    """
+    print("Creating 'live' user in chroot...")
+
+    # live ユーザーを作成（/etc/skel に基づく）
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "useradd", "-m", "-s", "/bin/bash", "live"
+    ])
+
+    # パスワードを "live" に設定
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "sh", "-c", "echo 'live:live' | chpasswd"
+    ])
+
+    print("ユーザー 'live' を作成し、/etc/skel に基づいて /home/live を作成しました。")
+
 

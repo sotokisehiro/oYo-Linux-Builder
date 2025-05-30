@@ -812,22 +812,32 @@ def clean_work():
 def create_live_user():
     """
     chroot 環境内に live ユーザーを作成し、パスワードも設定します。
- 
+    /etc/skel の内容が一部コピーされない問題があるため、明示的に再コピーも行います。
     """
     print("Creating 'live' user in chroot...")
 
-    # live ユーザーを作成（/etc/skel に基づく）
+    # live ユーザー作成
     _run([
         "sudo", "chroot", str(CHROOT),
         "useradd", "-m", "-s", "/bin/bash", "live"
     ])
 
-    # パスワードを "live" に設定
+    # パスワード設定
     _run([
         "sudo", "chroot", str(CHROOT),
         "sh", "-c", "echo 'live:live' | chpasswd"
     ])
 
-    print("ユーザー 'live' を作成し、/etc/skel に基づいて /home/live を作成しました。")
+    # skel の中身を強制コピー（useraddコマンドでコピーが漏れるケースがあったため）
+    _run([
+        "sudo", "cp", "-a", f"{CHROOT}/etc/skel/.", f"{CHROOT}/home/live/"
+    ])
+    _run([
+        "sudo", "chroot", str(CHROOT),
+        "chown", "-R", "live:live", "/home/live"
+    ])
+
+    print("ユーザー 'live' を作成し、/etc/skel の全内容を確実にコピーしました。")
+
 
 

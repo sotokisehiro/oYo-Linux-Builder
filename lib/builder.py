@@ -623,16 +623,8 @@ def build_iso():
     # 必要なディレクトリだけコピー（相対パスでマッチさせる）
     _run([
         "sudo", "rsync", "-a",
-        # Calamares 本体／モジュールを含める
-        "--include=usr/lib/calamares/", 
-        "--include=usr/lib/calamares/modules/", 
-        "--include=usr/lib/calamares/modules/**",
-        "--include=usr/lib/calamares/core.so",
-        "--include=usr/lib/calamares/libcalamares*.so",
-        "--include=usr/share/calamares/", 
-        "--include=usr/share/calamares/**",
         # 1) boot/ 以下を丸ごと
-#        "--include=boot/", "--include=boot/**",
+        "--include=boot/", "--include=boot/**",
         # 2) UEFI 用の EFI ディレクトリ
         "--include=EFI/",  "--include=EFI/**",
         # 3) GRUB モジュール（i386-pc, x86_64-efi など）

@@ -1,0 +1,2 @@
+galternatives
+dconf-editor

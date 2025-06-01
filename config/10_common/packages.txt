@@ -21,7 +21,12 @@ grub-pc-bin
 grub2-common
 shim-signed
 efibootmgr
-
+udev
+initramfs-tools-core
+fontconfig
+fonts-cantarell
+zstd
+ 
 #システム関連
 sudo
 rsync
@@ -37,3 +42,9 @@ dosfstools
 qml6-module-qtquick
 qml6-module-qtquick-window
 python3-pyqt6.qtsvg
+
+#plymouth関連
+plymouth
+plymouth-themes
+libplymouth5
+plymouth-label

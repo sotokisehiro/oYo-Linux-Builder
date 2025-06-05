@@ -20,3 +20,8 @@ nautilus
 # Wayland コンポジタ
 mutter
 
+#アイコン リサイズ
+librsvg2-bin
+
+#システム
+gsettings-desktop-schemas

@@ -26,6 +26,8 @@ initramfs-tools-core
 fontconfig
 fonts-cantarell
 zstd
+desktop-base
+desktop-file-utils
  
 #システム関連
 sudo

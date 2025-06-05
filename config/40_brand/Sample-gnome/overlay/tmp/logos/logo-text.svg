@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="600"
+   height="300"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="logo-text.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs12" />
+  <sodipodi:namedview
+     id="namedview10"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="1.9533333"
+     inkscape:cx="314.33448"
+     inkscape:cy="147.95222"
+     inkscape:window-width="1312"
+     inkscape:window-height="699"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg8" />
+  <!-- 背景なし（透過） -->
+  <g
+     id="g167" />
+  <g
+     id="g172"
+     transform="matrix(0.93149302,0,0,0.89124017,216.89129,-44.331475)">
+    <circle
+       cx="90.177048"
+       cy="142.71944"
+       r="70"
+       fill="#2f95a9"
+       id="circle2" />
+    <text
+       x="82.127579"
+       y="203.23888"
+       font-size="116.126px"
+       text-anchor="middle"
+       fill="#ffffff"
+       font-family="sans-serif"
+       font-weight="bold"
+       id="text4"
+       transform="scale(1.1156324,0.8963526)"
+       style="stroke-width:1.45157">S</text>
+  </g>
+  <text
+     x="17.082808"
+     y="198.62207"
+     font-size="105.517px"
+     fill="#2f95a9"
+     font-family="sans-serif"
+     id="text6"
+     transform="scale(0.81269213,1.2304783)"
+     style="stroke-width:2.19824">Sample Linux</text>
+</svg>

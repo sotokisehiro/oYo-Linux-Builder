@@ -1,11 +1,10 @@
----
 componentName: custom
 
 strings:
-  productName:         "Sample Linux"
-  shortProductName:    "S Linux"
-  versionedName:       "Sample Linux 1.0.0"
-  bootloaderEntryName: "Sample Linux"
+  productName:         "{{ name }}"
+  shortProductName:    "{{ name }}"
+  versionedName:       "{{ pretty_name }}"
+  bootloaderEntryName: "{{ name }}"
 
 images:
   productIcon:    "logo.png"
@@ -19,4 +18,3 @@ style:
   SidebarTextCurrent:       "#292F34"
 
 slideshow: "show.qml"
-

@@ -494,7 +494,7 @@ def _apply_calamares_branding():
     """
     Calamares の branding.desc を
     1) config/brand/<brand>/templates/branding.desc.j2 からレンダリング
-       → chroot/etc/calamares/branding/<brand>/branding.desc に書き込む
+       → chroot/etc/calamares/branding/custom/branding.desc に書き込む
     2) もしテンプレートがなければ overlay の既存ファイルをそのまま使う
     """
     brand = os.getenv("OYO_BRAND", "default")
@@ -513,11 +513,7 @@ def _apply_calamares_branding():
     # テンプレートがあればレンダリング
     tpl = brand_layer / brand / "templates" / "branding.desc.j2" if brand_layer else CFG_BASE / "brand" / brand / "templates" / "branding.desc.j2"
     if tpl.exists():
-         dest = Path("etc") / "calamares" / "branding" / brand / "branding.desc"
-         _render_brand_template("branding.desc.j2", dest, context)
-    if tpl.exists():
-        # Calamares の overlay で使われているディレクトリ名をそのまま使います
-        dest = Path("etc") / "calamares" / "branding" / brand / "branding.desc"
+        dest = Path("etc") / "calamares" / "branding" / "custom" / "branding.desc"
         _render_brand_template("branding.desc.j2", dest, context)
     else:
         print(f"No branding.desc.j2 for brand={brand}, skipping template.")
@@ -847,6 +843,4 @@ def create_live_user():
     ])
 
     print("ユーザー 'live' を作成し、/etc/skel の全内容を確実にコピーしました。")
-
-
 

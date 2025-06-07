@@ -49,7 +49,14 @@ rsvg-convert  -h 64 -o /usr/share/desktop-base/debian-logos/logo-text-version-64
 rsvg-convert  -h 128 -o /usr/share/desktop-base/debian-logos/logo-text-version-128.png /tmp/logos/logo-text-version.svg
 rsvg-convert  -h 256 -o /usr/share/desktop-base/debian-logos/logo-text-version-256.png /tmp/logos/logo-text-version.svg
 
+#calamares logo
+rsvg-convert  -w 128 -h 128 -o /etc/calamares/branding/custom/logo.png /tmp/logos/logo.svg
+
 #テーマ
 update-alternatives --install /usr/share/desktop-base/active-theme desktop-theme /usr/share/desktop-base/custom-theme 60
+
+#壁紙
+mkdir -p /usr/share/backgrounds/custom/
+cp /tmp/backgrounds/background.png /usr/share/backgrounds/custom/background.png
 
 update-initramfs -u

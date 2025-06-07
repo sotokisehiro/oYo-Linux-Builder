@@ -5,7 +5,7 @@ strings:
   productName:         "Sample Linux"
   shortProductName:    "S Linux"
   versionedName:       "Sample Linux 1.0.0"
-  bootloaderEntryName: "Sample Linux Installer"
+  bootloaderEntryName: "Sample Linux"
 
 images:
   productIcon:    "logo.png"

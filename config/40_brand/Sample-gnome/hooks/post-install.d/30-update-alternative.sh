@@ -51,6 +51,7 @@ rsvg-convert  -h 256 -o /usr/share/desktop-base/debian-logos/logo-text-version-2
 
 #calamares logo
 rsvg-convert  -w 128 -h 128 -o /etc/calamares/branding/custom/logo.png /tmp/logos/logo.svg
+cp /tmp/logos/logo.svg /usr/share/icons/hicolor/scalable/apps/calamares.svg
 
 #テーマ
 update-alternatives --install /usr/share/desktop-base/active-theme desktop-theme /usr/share/desktop-base/custom-theme 60

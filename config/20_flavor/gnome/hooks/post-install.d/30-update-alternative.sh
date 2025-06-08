@@ -2,7 +2,7 @@
 set -e
 
 #plymouthの変更
-update-alternatives --install  /usr/share/plymouth/themes/default.plymouth default.plymouth /usr/share/plymouth/themes/custom-spinner 60
+update-alternatives --install  /usr/share/plymouth/themes/default.plymouth default.plymouth /usr/share/plymouth/themes/custom 60
 
 #vendor-logos
 mkdir -p /usr/share/desktop-base/custom-logos

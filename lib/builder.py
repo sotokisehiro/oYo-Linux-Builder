@@ -148,26 +148,39 @@ def get_hook_configs() -> list[Path]:
     
 def _run_hooks(stage: str):
     """
-    common→flavor→lang→brand の各 config/hooks/<stage>.d/*.sh を
-    chroot 内で順に実行する。
+    全レイヤー（common, flavor, lang, brand）の hooks/<stage>.d/*.sh を収集し、
+    ファイル名の昇順にまとめて chroot 内で実行する。
     """
+    all_scripts = []
+
     for cfg in get_hook_configs():
         hooks_dir = cfg / "hooks" / f"{stage}.d"
-        if not hooks_dir.is_dir():
-            continue
-        # chroot 内の一時フォルダを用意
-        tmpdir = CHROOT / "tmp"
-        tmpdir.mkdir(parents=True, exist_ok=True)
-        for script in sorted(hooks_dir.iterdir()):
-            if script.suffix == ".sh" and script.is_file():
-                dest = tmpdir / script.name
-                print(f"→ hook: copying {script} to {dest}")
-                _run(["sudo", "cp", str(script), str(dest)])
-                print(f"→ hook: executing {script.name} in chroot")
-                _run([
-                    "sudo", "chroot", str(CHROOT),
-                    "sh", f"/tmp/{script.name}"
-                ])
+        if hooks_dir.is_dir():
+            for script in hooks_dir.glob("*.sh"):
+                if script.is_file():
+                    all_scripts.append(script)
+
+    # ファイル名でソート（フルパスではなくファイル名で）
+    all_scripts.sort(key=lambda p: p.name)
+
+    if not all_scripts:
+        print(f"[INFO] No hook scripts found for stage: {stage}")
+        return
+
+    tmpdir = CHROOT / "tmp"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+
+    for script in all_scripts:
+        dest = tmpdir / script.name
+        print(f"→ hook: copying {script} to {dest}")
+        _run(["sudo", "cp", str(script), str(dest)])
+
+    for script in all_scripts:
+        print(f"→ hook: executing {script.name} in chroot")
+        _run([
+            "sudo", "chroot", str(CHROOT),
+            "sh", f"/tmp/{script.name}"
+        ])
     
 def _render_brand_template(template_name: str, dest: Path, context: dict):
     """

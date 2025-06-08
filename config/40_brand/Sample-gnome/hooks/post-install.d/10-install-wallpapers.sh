@@ -6,8 +6,8 @@ set -e
 # default 壁紙
 #-----------------------------------------------------
 mkdir -p /usr/share/backgrounds/custom/
-cp /tmp/default-backgrounds/background-default.png /usr/share/backgrounds/custom/background-default.png
-cp /tmp/default-backgrounds/background-dark.png /usr/share/backgrounds/custom/background-dark.png
+cp /custom-theme/default-backgrounds/background-default.png /usr/share/backgrounds/custom/background-default.png
+cp /custom-theme/default-backgrounds/background-dark.png /usr/share/backgrounds/custom/background-dark.png
 
 
 #-----------------------------------------------------
@@ -20,7 +20,7 @@ XML_FILE="/usr/share/gnome-background-properties/custom.xml"
 
 # 壁紙ファイルをコピー
 mkdir -p "$WALLPAPER_DIR"
-find /tmp/backgrounds -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.svg' \) -exec cp {} $WALLPAPER_DIR \;
+find /custom-theme/backgrounds -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.svg' \) -exec cp {} $WALLPAPER_DIR \;
 
 # XMLのヘッダ部分
 echo '<?xml version="1.0" encoding="UTF-8"?>' > "$XML_FILE"

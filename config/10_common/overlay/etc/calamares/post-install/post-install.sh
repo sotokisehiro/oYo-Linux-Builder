@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+#grbuの背景設定
 GRUB_FILE="/etc/default/grub"
 THEME_IMG="/usr/share/desktop-base/custom-theme/grub/grub-16x9.png"
 
@@ -11,4 +12,6 @@ fi
 
 update-grub
 
+# ライブ起動時のロックスクリーンの無効化を、元に戻す
+gsettings set org.gnome.desktop.lockdown disable-lock-screen false
 

@@ -55,8 +55,4 @@ rsvg-convert  -w 128 -h 128 -o /etc/calamares/branding/custom/logo.png /tmp/logo
 #テーマ
 update-alternatives --install /usr/share/desktop-base/active-theme desktop-theme /usr/share/desktop-base/custom-theme 60
 
-#壁紙
-mkdir -p /usr/share/backgrounds/custom/
-cp /tmp/backgrounds/background.png /usr/share/backgrounds/custom/background.png
-
 update-initramfs -u

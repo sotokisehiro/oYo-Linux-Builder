@@ -1,7 +1,6 @@
 # oYo-Linux-Builder
 Custom Linux ISO build tool
 
-
 **oYo Linux Builder** は、open.Yellow.os 開発チーム が提供する  
 「簡単にオリジナル Linux ISO を自動ビルドするツール」です。
 
@@ -19,12 +18,12 @@ Custom Linux ISO build tool
 
 ## ⚙️ 前提要件
 
-- Debian系Linux（Debian GNU/Linux 12 Bullseye 以降、open.Yellow.os Freesia 以降推奨）  
+- Debian系Linux（Debian GNU/Linux 12 Bookworm 以降、open.Yellow.os Freesia 以降推奨）  
 - Python 3.8+  
 - root権限 または sudo  
 - 以下パッケージ（ホスト側）  
   ```
-  debootstrap rsync squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso dosfstools mtools python3.11-venv git
+  mmdebstrap rsync squashfs-tools grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed xorriso dosfstools mtools python3-venv python3-pip git
   ```
 
 ---
@@ -55,24 +54,13 @@ Custom Linux ISO build tool
 
 5. ISO のビルド例（GNOME／日本語／Sample-gnome ブランド）  
    ```bash
-   ./bin/oyo_builder.py \
-     --flavor gnome \
-     --lang ja \
-     --brand Sample-gnome \
-     build
+   ./bin/oyo_builder.py      --flavor gnome      --lang ja      --brand Sample-gnome      build
    ```
 
 6. QEMU でテスト起動  
 #### BIOS モード
 ```bash
-qemu-system-x86_64 \
-  -enable-kvm \
-  -m 2048 \
-  -machine type=pc,accel=kvm \
-  -cdrom *.iso \
-  -boot menu=on \
-  -vga qxl \
-  -serial mon:stdio
+qemu-system-x86_64   -enable-kvm   -m 2048   -machine type=pc,accel=kvm   -cdrom *.iso   -boot menu=on   -vga qxl   -serial mon:stdio
 ```
 
 #### UEFI モード
@@ -80,17 +68,51 @@ qemu-system-x86_64 \
 mkdir -p "$HOME/ovmf"
 cp /usr/share/OVMF/OVMF_VARS.fd "$HOME/ovmf/OVMF_VARS.fd"
 
-qemu-system-x86_64 \
-  -enable-kvm \
-  -m 2048 \
-  -machine q35,accel=kvm \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
-  -drive if=pflash,format=raw,file="$HOME/ovmf/OVMF_VARS.fd" \
-  -cdrom *.iso \
-  -boot menu=on \
-  -vga qxl \
-  -serial mon:stdio
+qemu-system-x86_64   -enable-kvm   -m 2048   -machine q35,accel=kvm   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd   -drive if=pflash,format=raw,file="$HOME/ovmf/OVMF_VARS.fd"   -cdrom *.iso   -boot menu=on   -vga qxl   -serial mon:stdio
 ```
+
+---
+
+## 🛠 主なコマンド・オプション
+
+- `init`  
+  作業ディレクトリなどの初期セットアップを行います。
+- `build`  
+  ISOイメージをビルドします。`--flavor` `--lang` `--brand` などのオプションでカスタマイズ可。
+- `clean`  
+  一時作業ディレクトリを完全削除し、作業環境をリセットします。
+- `--flavor`  
+  使用するデスクトップ環境を指定（例: gnome, xfce, kde）。
+- `--lang`  
+  言語リソースを指定（例: ja, en）。
+- `--brand`  
+  ブランド（テーマ・壁紙セットなど）を指定。
+- `--tmpfs`  
+  作業ディレクトリをRAM上（tmpfs）にマウントし、ビルドを高速化します（十分なメモリがある場合推奨）。
+- `--help`  
+  コマンドラインヘルプを表示します。
+
+---
+
+## 📦 ビルド成果物
+
+- 完成したISOイメージは**プロジェクトルート直下**に `os-バージョン-言語.iso` というファイル名で出力されます。  
+  例:  
+  ```
+  openyellowos-1.0-ja.iso
+  ```
+- `work/iso` ディレクトリにも一時的な構築用ファイルが保存されます。
+
+---
+
+## 📚 詳細ドキュメント
+
+- [設計方針・アーキテクチャ](./doc/10_ARCHITECTURE.md)
+- [インストール/利用方法・詳細](./doc/30_USAGE.md)
+- [設定・カスタマイズ・拡張方法](./doc/40_CONFIGURATION.md)
+- [ブランド追加・テーマ拡張手順](./doc/50_EXTENDING.md)
+- [コントリビュート・開発参加方法](./doc/60_CONTRIBUTING.md)
+- [変更履歴・Changelog](./doc/99_CHANGELOG.md)
 
 ---
 
@@ -107,4 +129,4 @@ qemu-system-x86_64 \
 ## 🤝 コントリビュート
 
 フォーク＆プルリク大歓迎！  
-詳細は [CONTRIBUTING.md](./CONTRIBUTING.md) をご参照ください。
+詳細は [CONTRIBUTING.md](./doc/60_CONTRIBUTING.md) をご参照ください。

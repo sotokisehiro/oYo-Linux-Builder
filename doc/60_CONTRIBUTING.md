@@ -8,7 +8,7 @@ oYo-Builder へのコントリビューション方法についてまとめて�
 ## 1. Issue の報告
 
 1. **バグ報告**  
-   - 最初に既存の [Issues](https://github.com/openyellowos/oYo-Builder/issues) を検索  
+   - 最初に既存の [Issues](https://github.com/openyellowos/oYo-Linux-Builder/issues) を検索  
    - 同様の報告がなければ、新規 Issue を作成  
    - **必須情報**:
      - oYo-Builder のバージョン  
@@ -18,7 +18,7 @@ oYo-Builder へのコントリビューション方法についてまとめて�
 
 2. **機能追加リクエスト**  
    - 必要な機能の概要と利用ケースを明確に説明  
-   - 可能であれば設計アイデアやコマンド例を記載
+   - 可能であれば設計アイデアやコマンド例も記載
 
 ---
 
@@ -29,8 +29,8 @@ oYo-Builder へのコントリビューション方法についてまとめて�
 
 2. **ローカルにクローン**  
    ```bash
-   git clone https://github.com/<your-username>/oYo-Builder.git
-   cd oYo-Builder
+   git clone https://github.com/<your-username>/oYo-Linux-Builder.git
+   cd oYo-Linux-Builder
    ```
 
 3. **ブランチ作成**  
@@ -59,52 +59,15 @@ oYo-Builder へのコントリビューション方法についてまとめて�
 
 ---
 
-## 3. コードスタイル
+## 3. ドキュメント改善
 
-- **フォーマット**: [Black](https://github.com/psf/black)  
-  ```bash
-  pip install black
-  black .
-  ```
-- **インポート順**: [isort](https://github.com/PyCQA/isort)  
-  ```bash
-  pip install isort
-  isort .
-  ```
-- **静的解析**: [flake8](https://github.com/pycqa/flake8)  
-  ```bash
-  pip install flake8
-  flake8 lib bin
-  ```
-
----
-
-## 4. テスト
-
-- **ユニットテスト**: `tests/` ディレクトリに配置  
-- **実行方法**: `pytest` を推奨  
-  ```bash
-  pip install pytest
-  pytest
-  ```
-- カバレッジツール（coverage.py）なども併用可能
-
----
-
-## 5. プルリクエスト後
-
-- **CI のチェック**: GitHub Actions で自動ビルド・テストが走ります  
-- **レビュー対応**: コメントに返信し、必要に応じて修正  
-- **マージ**: レビュー完了後、main ブランチにマージされます
-
----
-
-## 6. ドキュメント改善
-
-- ドキュメントは `*.md` 形式でリポジトリ直下に配置  
-- サンプルやスクリーンショットを追加するとわかりやすくなります
+- ドキュメントは `*.md` 形式でリポジトリ直下または `doc/` 配下に配置  
+- サンプルやスクリーンショット、コマンド例の追記歓迎
+- READMEやINSTALL、USAGE、CONFIGURATION等、関連ドキュメントとの一貫性も重視してください
 
 ---
 
 ご協力ありがとうございます！🎉  
 oYo-Builder をより良いツールにしていきましょう！  
+ディスカッション・提案も気軽に歓迎します。
+

@@ -1,4 +1,12 @@
 #!/bin/bash
+#
+# Calamaresで使用する以下の画像を、/custom-theme/からコピーして配置します。
+#  ・Calamares起動画面に表示する画像(welcome.png)
+#  ・インストール中に表示するスライドショー画像
+# 【目的】:
+#   - Calamaresで使用する画像を簡単に差し替えできるようにする
+#
+
 set -e
 
 # コピー先ディレクトリ
@@ -32,7 +40,7 @@ find "$DEST_DIR" -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -ina
   fname=$(basename "$img")
   
   # welcome.png は除外
-  if [[ "$fname" != "welcome.png" ]]; then
+  if [ "$fname" != "welcome.png" ]; then
     echo '    Slide {'
     echo '        Image {'
     echo "            source: \"${fname}\""

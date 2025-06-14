@@ -1,71 +1,71 @@
 # EXTENDING.md
 
 oYo-Builder の拡張ガイドです。  
-新しいフレーバーやブランド、Hook、CI/CD 連携などの手順をまとめています。
+新しいフレーバーやブランド、Hook、CI/CD連携などの手順をまとめています。
 
 ---
 
 ## 1. 新しいフレーバー（Flavor）の追加
 
 1. **ディレクトリ作成**  
-   `config/` 配下に数字付きプレフィックスを用いて新フォルダを作成します（例: `25_xfce`）。  
+   `config/` 配下に数字付きプレフィックスで新フォルダを作成（例: `20_gnome`、`21_kde`など）。
    ```
    config/
    ├ 10_common/
    ├ 20_gnome/
-   ├ 25_xfce/       ← 追加
+   ├ 21_kde/
    └ 30_lang/
    ```
 2. **設定ファイル配置**  
-   - `config/25_xfce/packages.txt` に XFCE 用パッケージを記載  
-   - `config/25_xfce/overlay/` に XFCE 固有の設定ファイルやテーマを置く  
+   - `config/20_gnome/packages.txt` … GNOME用パッケージリスト
+   - `config/20_gnome/overlay/` … GNOME専用の設定やテーマ
 3. **テスト**  
    ```bash
-   ./bin/oyo_builder.py -f xfce -l en build
+   ./bin/oyo_builder.py --flavor gnome --lang en build
    ```
-4. **QEMU 起動**  
-   上記に加えて `--brand`/`--lang` を指定して検証します。
+4. **QEMUで起動テスト**  
+   `--brand`や`--lang`も指定して動作確認
 
 ---
 
 ## 2. 新しいブランド（Brand）の追加
 
 1. **ディレクトリ作成**  
-   `config/40_brand/` 配下にブランド名でサブディレクトリを追加（例: `myco`）。  
-2. **Overlay と Templates**  
-   - `config/40_brand/myco/overlay/`: 壁紙、アイコン、Plymouth テーマなど  
-   - `config/40_brand/myco/templates/`: `brand.yml` と `.j2` テンプレート  
+   `config/40_brand/` 配下にブランド名でディレクトリ作成（例: `myco`）。
+2. **OverlayとTemplates**  
+   - `config/40_brand/myco/overlay/` … 壁紙、アイコン、plymouthテーマ等
+   - `config/40_brand/myco/templates/` … `brand.yml`や`branding.desc.j2`、`grub.cfg.j2`、`plymouth-theme.conf.j2`など
 3. **テスト**  
    ```bash
-   ./bin/oyo_builder.py -f gnome -l ja -b myco build
+   ./bin/oyo_builder.py --flavor gnome --lang ja --brand myco build
    ```
 
 ---
 
-## 3. Hook スクリプトの追加
+## 3. Hookスクリプトの追加
 
 - **カテゴリ**  
-  - `hooks/pre-install.d/` : パッケージインストール前  
-  - `hooks/post-install.d/`: パッケージインストール後  
+  - `hooks/pre-install.d/` … mmdebstrapによるベース展開前に実行
+  - `hooks/post-install.d/` … ベース展開・overlay・ユーザー作成後に実行
 
 1. **シェルスクリプト作成**  
    ```bash
    #!/bin/sh
    set -e
-   # 任意コマンド
+   # 任意のカスタム処理
    echo "Running custom hook!"
    ```
 2. **配置場所**  
    - `config/10_common/hooks/post-install.d/10-custom.sh`  
-   - 他レイヤーでも同様に配置可能  
+   - 他レイヤーにも設置可能（プレフィックス番号順で複数実行）
 3. **実行確認**  
-   ビルドログに `→ hook: executing 10-custom.sh in chroot` が表示されれば成功
+   ビルドログに `→ hook: executing 10-custom.sh in chroot` が出ていれば成功
 
 ---
 
-## 4. CI/CD 連携例
+## 4. CI/CD連携例
 
-### GitHub Actions
+### GitHub Actions（例）
 
 ```yaml
 name: Build ISO
@@ -87,36 +87,40 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y debootstrap rsync squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso dosfstools
+        sudo apt install -y mmdebstrap rsync squashfs-tools grub-pc-bin grub-efi-amd64-bin grub-efi-amd64-signed shim-signed xorriso dosfstools mtools python3-venv python3-pip
     - name: Setup venv
       run: |
-        python -m venv .venv
+        python3 -m venv .venv
         source .venv/bin/activate
         pip install -r requirements.txt
     - name: Build ISO
       run: |
-        ./bin/oyo_builder.py -f gnome -l en -b default build
+        ./bin/oyo_builder.py --flavor gnome --lang en --brand default build
     - name: Upload ISO
       uses: actions/upload-artifact@v3
       with:
         name: iso
-        path: *.iso
+        path: "*.iso"
 ```
+> 必要に応じて各自のブランドやフレーバー名、ビルドオプションを編集してください。
 
 ---
 
 ## 5. トラブルシューティング
 
 - **パッケージ不足エラー**  
-  - `Command '['chroot' ...] returned non-zero exit status` → `packages.txt` に必要なパッケージを追加  
-- **Overlay が反映されない**  
-  - ディレクトリ構成やプレフィックス順を再確認  
-- **Hook が実行されない**  
-  - スクリプトに実行権 (`chmod +x`) があるか  
-  - `hooks/…` のパスが正しいか  
-- **ISO が起動しない**  
-  - `grub.cfg` のパス設定（`set root=(cd)` vs `(cd0)`）  
-  - `vmlinuz`/`initrd.img` が正しいか
+  - `Command '['chroot' ...] returned non-zero exit status` → `packages.txt` に必要なパッケージを追加
+- **Overlayが反映されない**  
+  - ディレクトリ名・構成・数字プレフィックス順を確認
+- **Hookが実行されない**  
+  - 実行権（chmod +x）があるか、パスが正しいか
+- **ISOが起動しない／Secure Bootで失敗**  
+  - grub.cfgやEFIファイルのパス・shim, grubx64.efi.signed, mmx64.efiの有無を確認
+  - Secure Bootエラー時は `grub-efi-amd64-signed`/`shim-signed` の導入・テンプレ展開を見直す
+
+---
+
+> 詳細なカスタマイズや設計は [CONFIGURATION.md](./40_CONFIGURATION_latest.md) も参照してください。
 
 ---
 

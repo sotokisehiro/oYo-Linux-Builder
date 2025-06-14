@@ -1,4 +1,12 @@
 #!/bin/bash
+#
+#  「/etc/environment」にFcitx用の入力メソッド環境変数を
+#  （無ければ）追記する処理
+#
+# 【目的】:
+#   - GTK, Qt, Xアプリで日本語入力FcitxをデフォルトIMとして利用できるようにする
+#   - 既存の同名環境変数が無い場合のみ、追記（重複防止）
+#
 set -e
 
 ENV_FILE="/etc/environment"

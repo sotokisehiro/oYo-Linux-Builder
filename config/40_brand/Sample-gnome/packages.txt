@@ -1,2 +1,4 @@
 galternatives
 dconf-editor
+synaptic
+firefox-esr

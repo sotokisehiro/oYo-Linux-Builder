@@ -1,36 +1,73 @@
 #!/usr/bin/env python3
 import os
+import sys
 import shutil
 import subprocess
 from pathlib import Path
 import logging
 import datetime
 import re
-import sys
-import shutil as _shutil
 import yaml
 from jinja2 import Environment, FileSystemLoader
 import typer
 import atexit
-import textwrap
-import stat
 
+# --- 定数 ---
+ROOT     = Path(__file__).resolve().parent.parent
+CFG_BASE = ROOT / "config"
+WORK     = ROOT / "work"
+CHROOT   = WORK / "chroot"
+ISO      = WORK / "iso"
+LOG_DIR  = ROOT / "log"
+
+# workディレクトリをtmpfs（RAMディスク）にマウントする際の容量
+# 環境変数OYO_TMPFS_SIZEで変更可能（例: "8G", "16G", "80%"）。デフォルトは8G。
+TMPFS_SIZE = os.getenv("OYO_TMPFS_SIZE", "8G")
+
+# --- ビルドに必要な外部コマンド ---
+REQUIRED_COMMANDS = [
+    "sudo",
+    "mmdebstrap",
+    "grub-mkrescue",
+    "mksquashfs",
+    "cp",
+    "mount",
+    "umount",
+    "rsync",
+    "apt-cache",
+    "chroot",
+    "rm",
+    "ln",
+    "useradd",
+    "sh",
+    "chpasswd",
+    "mountpoint",
+]
+
+# 今回ビルドごとにタイムスタンプ付きログファイルを作成
+ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+LOG_FILE = LOG_DIR / f"build_{ts}.log"
 
 # debootstrap などが /usr/sbin/ に入っている場合があるので、
 # チェックを行う前に sbin を PATH に含める
 os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + "/usr/sbin"
 
-ROOT     = Path(__file__).resolve().parent.parent
-CFG_BASE = ROOT / "config"
-
 # アンマウント対象を記録するリスト
 _MOUNTS: list[Path] = []
 
 def _register_unmount(path: Path):
+    """
+    ビルド中にmountしたディレクトリを記録する。
+    プログラム終了時やクリーンアップ時にアンマウント対象として利用する。
+    """
     if path not in _MOUNTS:
         _MOUNTS.append(path)
 
 def _cleanup_mounts():
+    """
+    _register_unmountで登録した全ディレクトリをアンマウントする。
+    プログラム終了時に必ず呼ばれ、マウントしっぱなしのリソースを残さないようにする。
+    """
     for m in reversed(_MOUNTS):
         subprocess.run(
             ["sudo", "umount", "-l", str(m)],
@@ -40,44 +77,19 @@ def _cleanup_mounts():
 # プログラム終了時に必ず呼ぶ
 atexit.register(_cleanup_mounts)
 
-TMPFS_SIZE = os.getenv("OYO_TMPFS_SIZE", "8G")   # 例: 8G, 16G, 80%
-
 def _mount_tmpfs(path: Path):
-    "path を tmpfs にマウント（空でも中身があっても強制マウント）"
+    """
+    指定パスにtmpfsをマウントする。ISOビルドの高速化のため一時ワークをRAM上に配置したい場合に利用。
+    """
     _run(["sudo", "mount", "-t", "tmpfs",
           "-o", f"size={TMPFS_SIZE},mode=0755", "tmpfs", str(path)])
     print(f"Mounted tmpfs ({TMPFS_SIZE}) on {path}")
     _register_unmount(path)
 
-def _render_brand_template(template_name: str, dest_path: Path, context: dict):
-    """config/brand/<brand>/templates からテンプレートを探し、
-       コンテキストでレンダリングして chroot 内に書き込む"""
-    brand = os.getenv("OYO_BRAND", "default")
-
-    # 数字付きプレフィックス付きディレクトリを優先して探す
-    brand_layer = next(
-        (d for d in CFG_BASE.iterdir()
-         if d.is_dir() and d.name.split("_",1)[1] == "brand"),
-        None
-    )
-    if not brand_layer:
-        raise FileNotFoundError("config 配下に *_brand ディレクトリが見つかりません")
-        
-    tpl_dir = brand_layer / brand / "templates"
-
-    env = Environment(loader=FileSystemLoader(str(tpl_dir)))
-    tpl = env.get_template(template_name)
-    rendered = tpl.render(**context)
-
-    target = CHROOT / dest_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(rendered)
-    print(f"Rendered {template_name} → {target}")
-
 def get_configs() -> list[Path]:
     """
-    config/配下を数字プレフィックス順にスキャンして、
-    common→flavor→lang→brand を自動で選択・返却する。
+    各種設定レイヤー（common, flavor, lang, brand）を自動検出し、適用順に返す。
+    ビルドやoverlay適用時にどの設定を参照すべきかを動的に決めるための関数。
     """
     flavor = os.getenv("OYO_FLAVOR", "common")
     lang   = os.getenv("OYO_LANG",    "en")
@@ -116,7 +128,8 @@ def get_configs() -> list[Path]:
 
 def get_hook_configs() -> list[Path]:
     """
-    hooks（pre-install / post-install）の対象となる層をすべて返す。
+    pre-install/post-install用のhooks対象レイヤーを取得。
+    フック実行時にどのhooksディレクトリを順番に見るかを決める。
     """
     flavor = os.getenv("OYO_FLAVOR", "common")
     lang   = os.getenv("OYO_LANG",    "en")
@@ -148,8 +161,8 @@ def get_hook_configs() -> list[Path]:
     
 def _run_hooks(stage: str):
     """
-    全レイヤー（common, flavor, lang, brand）の hooks/<stage>.d/*.sh を収集し、
-    ファイル名の昇順にまとめて chroot 内で実行する。
+    指定ステージ（pre-install, post-install）に応じた全フックシェルスクリプトをchroot内で順次実行する。
+    各レイヤーの拡張処理・追加カスタマイズを一括実行するための仕組み。
     """
     all_scripts = []
 
@@ -184,15 +197,14 @@ def _run_hooks(stage: str):
     
 def _render_brand_template(template_name: str, dest: Path, context: dict):
     """
-    config/brand/<brand>/templates/<template_name> を
-    Jinja2 でレンダリングし、CHROOT 内の dest に書き込む。
+    ブランドごとのJinja2テンプレートをレンダリングし、chroot内の所定パスに書き込む。
+    各種branding・設定ファイルを柔軟に差し替えるために使う。
     """
     brand = os.getenv("OYO_BRAND", "default")
-    # 同じく数字付きプレフィックス付き「*_brand」から拾う
-    brand_layer = next(
-        (d for d in CFG_BASE.iterdir() if d.is_dir() and d.name.split("_",1)[1] == "brand"),
-        None
-    )
+    brand_layer = find_brand_layer()
+    
+    if not brand_layer:
+        raise FileNotFoundError("config 配下に *_brand ディレクトリが見つかりません")
     tpl_dir = brand_layer / brand / "templates"
     env = Environment(loader=FileSystemLoader(str(tpl_dir)))
     tpl = env.get_template(template_name)
@@ -203,38 +215,21 @@ def _render_brand_template(template_name: str, dest: Path, context: dict):
     target.write_text(rendered)
     print(f"Rendered {template_name} → {target}")
 
-LOG_DIR = ROOT / "log"
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-
-# ビルドに必要な外部コマンド一覧
-REQUIRED_COMMANDS = [
-    "sudo",
-    "debootstrap",
-    "mmdebstrap",
-    "grub-mkrescue",
-    "mksquashfs",
-    "xorriso",
-    "cp",
-    "mount",
-    "umount",
-    "rsync",
-    "mtools",
-]
-
 def _check_host_dependencies():
-    """ビルドに必須のホスト側コマンドがインストールされているかチェック"""
+    """
+    ビルドに必要な外部コマンドが揃っているか事前に検査する。
+    未導入の場合はエラーで強制終了し、途中ビルド失敗を防ぐ。
+    """
     missing = []
     for cmd in REQUIRED_COMMANDS:
-        if _shutil.which(cmd) is None:
+        if shutil.which(cmd) is None:
             missing.append(cmd)
     if missing:
         print(f"[ERROR] 以下のコマンドが見つかりません: {', '.join(missing)}")
         print("ビルドを続行するには、これらをインストールしてください。")
         sys.exit(1)
 
-# 今回ビルドごとにタイムスタンプ付きログファイルを作成
-ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-LOG_FILE = LOG_DIR / f"build_{ts}.log"
+
 
 # logging の設定：ファイルとコンソールの両方に出力
 logging.basicConfig(
@@ -247,39 +242,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# (既存の) logger 設定 はそのまま
-LOG_DIR = ROOT / "log"
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-
-CONFIG = ROOT / "config"
-WORK   = ROOT / "work"
-CHROOT = WORK / "chroot"
-ISO    = WORK / "iso"
-LOG    = ROOT / "log"
-
 def initialize(use_tmpfs: bool = False):
-    """work/ と log/ のディレクトリを作成"""
+    """
+    work/logディレクトリの初期化、ホスト依存コマンドの検査を行う。
+    tmpfs利用時は作業ディレクトリをRAM上にマウントする。
+    ビルド開始前の環境セットアップに必須。
+    """
     # ホスト依存チェック
     _check_host_dependencies()
 
-    # ① 先に mount ポイント（WORK）を作成
-    WORK.mkdir(parents=True, exist_ok=True)
-    # ② フラグが True のときだけ tmpfs をマウント
+    # ディレクトリ作成
+    for d in (WORK, ISO, CHROOT, LOG_DIR):
+        d.mkdir(parents=True, exist_ok=True)
+    print(f"Created directories: {WORK}, {ISO}, {CHROOT}, {LOG_DIR}")
+
+    # フラグが True のときだけ tmpfs をマウント
     if use_tmpfs:
         _mount_tmpfs(WORK)
         print("tmpfs created")
-    for d in (WORK, ISO, CHROOT, LOG):
-        d.mkdir(parents=True, exist_ok=True)
-    print(f"Created work and log directories: {WORK}, {LOG}")
 
 # スクリプトが root で実行中か
 IS_ROOT = (os.geteuid() == 0)
 
 def _run(cmd, **kwargs):
     """
-    外部コマンド実行のラッパー。
-    - root 実行時は先頭の sudo を自動で除去
-    - 標準出力・エラーをログに流す
+    外部コマンドを安全に実行し、ログ記録・root時のsudo除去などのラッパーも兼ねる。
+    失敗時は例外送出してビルド全体の異常終了を管理する。
     """
     # root なら sudo を外す
     if IS_ROOT and cmd and cmd[0] == "sudo":
@@ -292,12 +280,13 @@ def _run(cmd, **kwargs):
         text=True,
         **kwargs
     )
-    # プロセスから出力される行をすべてログに
     for line in proc.stdout:
         logger.info(line.rstrip())
     proc.wait()
     if proc.returncode != 0:
+        logger.error(f"コマンド失敗: {' '.join(cmd)}\nリターンコード: {proc.returncode}")
         raise subprocess.CalledProcessError(proc.returncode, cmd)
+
 
 def _get_codename_from_os_release() -> str:
     """common→flavor の順で os-release を探し、VERSION_CODENAME を返す"""
@@ -361,7 +350,10 @@ def _get_iso_filename() -> str:
     return f"{safe}-{lang}.iso"
 
 def _prepare_chroot(codename: str):
-    """chroot をクリアして debootstrap でベースシステムを投入"""
+    """
+    chroot環境を初期化し、mmdebstrapでベースシステムと追加パッケージ群を展開する。
+    古いchrootは安全にクリーンアップし直す。
+    """
 
     # 古い chroot をまるごと削除
     if CHROOT.exists():
@@ -425,20 +417,23 @@ def _prepare_chroot(codename: str):
         # ── 並列ダウンロード・リトライ設定 ──
         "--aptopt=Acquire::Queue-Mode \"host\";",
         "--aptopt=Acquire::Retries \"3\";",
-
         # ── あらかじめ集めたパッケージ群 ──
         include_opt,
 
         # ── その他の引数 ──
         codename,
         str(CHROOT),
-        "http://deb.debian.org/debian"
+        "deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware"
     ])
 
     print(f"Base system + packages deployed via mmdebstrap ({codename}).")
 
 def _copy_overlay():
-    """common→flavor の overlay を順に chroot にコピー"""
+    """
+    各設定レイヤーごとのoverlayファイル群をchrootへ順次コピー。
+    sudoers.dの所有権リセットも含め、環境依存トラブルを未然に防ぐ。
+    """
+    
     for cfg in get_configs():
         overlay = cfg / "overlay"
         if overlay.exists():
@@ -449,28 +444,30 @@ def _copy_overlay():
                 f"{overlay}/",  # Trailing slash: 中身すべてを
                 str(CHROOT) + "/"  # chroot 直下にコピー
             ])
-            
+     
+  
     # --- ここで必ず sudoers.d の所有者を root:root に戻す ---
+    # overlay の所有者が root でない場合の sudoers.d エラー対策として、念のため修正     
     print("Fixing ownership on /etc/sudoers.d …")
     _run([
         "sudo", "chroot", str(CHROOT),
         "chown", "-R", "root:root", "/etc/sudoers.d"
     ])
 
-
     print("Overlay files copied.")
 
 def _apply_os_release():
-    """os-release をテンプレート or overlay から設定"""
+    """
+    os-releaseをブランド用テンプレートまたはoverlayからchrootに反映。
+    システム情報・識別情報を正しく埋め込むための処理。
+    """
+    
     # 1) brand.yml を読み込んで context 作成
     brand = os.getenv("OYO_BRAND", "default")
 
     # 数字接頭辞付きの「*_brand」ディレクトリを探す
-    brand_layer = next(
-        (d for d in CFG_BASE.iterdir()
-         if d.is_dir() and d.name.split("_",1)[1] == "brand"),
-        None
-    )
+    brand_layer = find_brand_layer()
+
     if not brand_layer:
         raise FileNotFoundError("config 配下に *_brand ディレクトリが見つかりません")
 
@@ -505,18 +502,14 @@ def _apply_os_release():
 
 def _apply_calamares_branding():
     """
-    Calamares の branding.desc を
-    1) config/brand/<brand>/templates/branding.desc.j2 からレンダリング
-       → chroot/etc/calamares/branding/custom/branding.desc に書き込む
-    2) もしテンプレートがなければ overlay の既存ファイルをそのまま使う
+    Calamaresインストーラのbranding設定をテンプレートで生成またはoverlayから反映する。
+    ブート時のブランド表現やインストーラ見た目を柔軟に変更可能にする。
     """
     brand = os.getenv("OYO_BRAND", "default")
 
     # 数字付きプレフィックスの「*_brand」ディレクトリを探す
-    brand_layer = next(
-        (d for d in CFG_BASE.iterdir() if d.is_dir() and d.name.split("_",1)[1] == "brand"),
-        None
-    )
+    brand_layer = find_brand_layer()
+    
     # brand.yml から変数を読み込む
     yml = brand_layer / brand / "brand.yml" if brand_layer else CFG_BASE / "brand" / brand / "brand.yml"
 
@@ -532,7 +525,10 @@ def _apply_calamares_branding():
         print(f"No branding.desc.j2 for brand={brand}, skipping template.")
 
 def build_iso():
-    """ISO ビルドのメインフロー"""
+    """
+    ISOイメージ生成の全手順を統括するメイン処理。
+    chroot準備、overlay適用、ユーザー作成、フック実行、テンプレ展開、イメージ生成まで一貫して行う。
+    """
     logger.info("=== Build started ===")
     codename = _get_codename_from_os_release()
 
@@ -562,10 +558,6 @@ def build_iso():
     apt_cache.mkdir(parents=True, exist_ok=True)
     _run(["sudo", "mount", "--bind", "/var/cache/apt/archives", str(apt_cache)])
     _register_unmount(apt_cache)  
-
-    # ——— post-install hooks を実行 ———
-    print("Running pre-install hooks…")
-    _run_hooks("pre-install")
     
     # ——— post-install hooks を実行 ———
     print("Running post-install hooks…")
@@ -656,20 +648,15 @@ def build_iso():
     # ─── Plymouth テンプレートがあればここで適用 ───
     # 1) brand レイヤーを探して paths を決定
     brand = os.getenv("OYO_BRAND", "default")
-    brand_layer = next(
-        (d for d in CFG_BASE.iterdir()
-         if d.is_dir() and d.name.split("_",1)[1] == "brand"),
-        None
-    )
+    brand_layer = find_brand_layer()
+
     if brand_layer:
         brand_dir = brand_layer / brand
-        # context は brand.yml から
         context = {}
         yml = brand_dir / "brand.yml"
         if yml.exists():
             context = yaml.safe_load(yml.read_text())
-
-        # ① plymouth-theme.conf.j2 → テーマ本体
+        # --- Plymouth テンプレート適用 ---
         theme_tpl = brand_dir / "templates" / "plymouth-theme.conf.j2"
         if theme_tpl.exists():
             _render_brand_template(
@@ -678,43 +665,27 @@ def build_iso():
                 context
             )
             print(f"Applied Plymouth theme from {theme_tpl}")
-
-        # ② plymouth-<theme>.conf.j2 → 設定ファイル
         for tpl in (brand_dir / "templates").glob("plymouth-*.conf.j2"):
-            out_name = tpl.name[:-3]   # .j2 を外したファイル名
+            out_name = tpl.name[:-3]
             _render_brand_template(
                 tpl.name,
                 Path("etc") / "plymouth" / out_name,
                 context
             )
             print(f"Applied Plymouth config from {tpl}")
-    
-    # 【Brand テンプレートがあれば BIOS/UEFI 両方の grub.cfg を上書き
-    brand = os.getenv("OYO_BRAND", "default")
-    brand_layer = next(
-        (d for d in CFG_BASE.iterdir() if d.is_dir() and d.name.endswith("_brand")),
-        None
-    )
-    if brand_layer:
-        brand_dir = brand_layer / brand
+
+        # --- grub.cfg テンプレート適用 ---
         grub_tpl = brand_dir / "templates" / "grub.cfg.j2"
         if grub_tpl.exists():
-            # brand.yml からコンテキストを読み直す
-            context = {}
-            yml = brand_dir / "brand.yml"
             if yml.exists():
-                context = yaml.safe_load(yml.read_text())
-
-            # BIOS 向け grub.cfg
+                context = yaml.safe_load(yml.read_text())  # 必要なら再読込
             _render_brand_template(
                 "grub.cfg.j2",
                 ISO / "boot" / "grub" / "grub.cfg",
                 context
             )
-
+                
     print(f"Applied branded grub.cfg from {grub_tpl} to BIOS and UEFI")
-    
-    # UEFI向けにも同じ grub.cfg をコピー
     uefi_grub_cfg_path = ISO / "EFI" / "BOOT" / "grub.cfg"
     _run([
         "sudo", "cp",
@@ -771,7 +742,10 @@ def build_iso():
     logger.info("=== Build finished ===")
 
 def _make_iso():
-    """grub-mkrescue で ISO イメージを作成。名前は os-release に従う"""
+    """
+    grub-mkrescueコマンドを使って、chroot/isoディレクトリから最終ISOファイルを生成する。
+    BIOS/UEFI両対応イメージの作成を自動化。
+    """
     # 動的にファイル名を決定
     iso_name = _get_iso_filename()
     iso_file = ROOT / iso_name
@@ -787,8 +761,11 @@ def _make_iso():
     logger.info(f"ISO image created: {iso_file}")
 
 def clean_work():
-    """work/ 以下をクリーンアップ"""
-    import subprocess, os
+    """
+    workディレクトリの全内容をアンマウント・削除し、作業領域を完全初期化する。
+    不要なマウント/ゴミを残さないために実行。
+    """
+
     devnull = subprocess.DEVNULL if os.path.exists(os.devnull) else None
 
     # ① まず残っている bind マウントを外す
@@ -829,8 +806,8 @@ def clean_work():
     
 def create_live_user():
     """
-    chroot 環境内に live ユーザーを作成し、パスワードも設定します。
-    /etc/skel の内容が一部コピーされない問題があるため、明示的に再コピーも行います。
+    chroot内にライブ用ユーザー（live）を作成し、/etc/skelからホームディレクトリ内容を補完コピー。
+    ライブ環境でユーザーが即利用できる状態にする。
     """
     print("Creating 'live' user in chroot...")
 
@@ -856,4 +833,14 @@ def create_live_user():
     ])
 
     print("ユーザー 'live' を作成し、/etc/skel の全内容を確実にコピーしました。")
+    
+def find_brand_layer():
+    """
+    config配下から「*_brand」ディレクトリを探して返すユーティリティ。
+    ブランド毎の設定探索を一元化するために利用。
+    """
+    return next(
+        (d for d in CFG_BASE.iterdir() if d.is_dir() and d.name.split("_",1)[1] == "brand"),
+        None
+    )
 

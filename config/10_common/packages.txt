@@ -50,3 +50,27 @@ plymouth
 plymouth-themes
 libplymouth5
 plymouth-label
+
+#firmware関連
+## 共通 CPU / 基本周辺
+firmware-linux
+firmware-linux-nonfree
+firmware-sof-signed
+
+## GPU・ディスプレイ
+firmware-intel-graphics
+firmware-amd-graphics
+firmware-nvidia-graphics
+firmware-nvidia-gsp
+
+## 無線 LAN & Bluetooth
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+firmware-brcm80211
+firmware-mediatek
+
+## USB ドングル系
+firmware-ath9k-htc
+firmware-carl9170
+firmware-zd1211

@@ -15,3 +15,6 @@ update-grub
 # ライブ起動時のロックスクリーンの無効化を、元に戻す
 gsettings set org.gnome.desktop.lockdown disable-lock-screen false
 
+#calamaresをアンインストール
+sudo apt remove -y calamares
+

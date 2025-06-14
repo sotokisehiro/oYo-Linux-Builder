@@ -409,22 +409,42 @@ def _prepare_chroot(codename: str):
     include_opt = "--include=" + ",".join(include_pkgs)
 
     print("Deploying base system via mmdebstrap (incl. all packages)…")
+    
+    # ISOファイルサイズを減らすため、docs / man / 多言語ロケールを除外
+    dpkg_opts = [
+        "--dpkgopt=path-exclude=/usr/share/doc/*",
+        "--dpkgopt=path-exclude=/usr/share/man/*",
+        "--dpkgopt=path-exclude=/usr/share/info/*",
+        "--dpkgopt=path-exclude=/usr/share/locale/*",
+        "--dpkgopt=path-include=/usr/share/locale/ja/*",
+    ]
+    
     _run([
         "sudo", "mmdebstrap",
         "--architectures=amd64",
-        "--variant=important",
+        "--variant=minbase",
 
         # ── 並列ダウンロード・リトライ設定 ──
         "--aptopt=Acquire::Queue-Mode \"host\";",
         "--aptopt=Acquire::Retries \"3\";",
+
+        # ISOファイルサイズを減らすため、Recommendsを除外        
+        "--aptopt=APT::Install-Recommends \"false\";",
+
         # ── あらかじめ集めたパッケージ群 ──
         include_opt,
+
+        # ISOファイルサイズを減らすため、docs / man / 多言語ロケールを除外
+        *dpkg_opts,
 
         # ── その他の引数 ──
         codename,
         str(CHROOT),
         "deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware"
     ])
+
+    # ISOファイルサイズを減らすため、キャッシュを削除    
+    _apt_clean() 
 
     print(f"Base system + packages deployed via mmdebstrap ({codename}).")
 
@@ -728,9 +748,9 @@ def build_iso():
         "sudo", "mksquashfs",
         str(CHROOT),
         str(squashfs),
-        "-comp", "lz4",             # 圧縮方式: lz4（高速）
+        "-comp","xz","-Xdict-size","100%",  # 圧縮方式: lz4（高速）
         "-processors", str(cpus),   # 全コア数を指定（1以上）
-        "-e", "live"                # /live は別途コピー
+        "-e","live","boot"
     ])
     print(f"Squashfs image created at {squashfs}")
 
@@ -844,3 +864,9 @@ def find_brand_layer():
         None
     )
 
+def _apt_clean():
+    """
+    aptキャッシュを削除する
+    """
+    _run(["sudo","chroot",str(CHROOT),"apt-get","clean","autoclean"])
+    _run(["sudo","rm","-rf",str(CHROOT / "var/lib/apt/lists")])

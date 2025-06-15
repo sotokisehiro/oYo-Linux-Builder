@@ -15,6 +15,10 @@ update-grub
 # ライブ起動時のロックスクリーンの無効化を、元に戻す
 gsettings set org.gnome.desktop.lockdown disable-lock-screen false
 
+# 最初のブート時に一度だけ動くサービスのファイルを配置
+cp /usr/lib/custom/firstboot.service /etc/systemd/system/firstboot.service
+systemctl enable firstboot.service
+
 #calamaresをアンインストール
 sudo apt remove -y calamares
 

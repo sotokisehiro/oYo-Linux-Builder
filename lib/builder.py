@@ -422,7 +422,9 @@ def _prepare_chroot(codename: str):
     _run([
         "sudo", "mmdebstrap",
         "--architectures=amd64",
-        "--variant=minbase",
+        # ISOサイズ削減のため、"minbase"を指定したいが
+        # calamaresインストールでエラーになるため"important"を指定する
+        "--variant=important",
 
         # ── 並列ダウンロード・リトライ設定 ──
         "--aptopt=Acquire::Queue-Mode \"host\";",
@@ -750,7 +752,7 @@ def build_iso():
         str(squashfs),
         "-comp","xz","-Xdict-size","100%",  # 圧縮方式: lz4（高速）
         "-processors", str(cpus),   # 全コア数を指定（1以上）
-        "-e","live","boot"
+        "-e","live"
     ])
     print(f"Squashfs image created at {squashfs}")
 

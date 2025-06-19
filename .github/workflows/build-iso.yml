@@ -76,6 +76,7 @@ jobs:
       ##################################################################
       - name: Build ISO (${{ matrix.lang }})
         run: |
+          mkdir -p log
           . .venv/bin/activate
           ./bin/oyo_builder.py \
             --flavor gnome \

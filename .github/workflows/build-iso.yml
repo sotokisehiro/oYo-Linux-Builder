@@ -59,12 +59,12 @@ jobs:
             squashfs-tools grub-efi-amd64-bin shim-signed \
             xorriso dosfstools rsync gnupg curl jq
             
-          # DebianのパッケージAPIで最新版のファイル名を取得
-          URL=$(curl -fsSL 'https://api.debian.org/packages?series=unstable&package=debian-archive-keyring' \
-                | jq -r '.versions[0].url')
-          echo "Download $URL"
-          curl -fsSL -o keyring.deb "$URL"
-          sudo dpkg -i keyring.deb
+          # ---- Debian Archive 2024 鍵（ASCII）を取得して system keyring に登録 ----
+          curl -fsSL https://ftp-master.debian.org/keys/archive-key-2024.asc \
+            | gpg --dearmor | sudo tee /usr/share/keyrings/debian-archive-2024.gpg > /dev/null
+
+          # apt が認識できる場所にも配置
+          sudo cp /usr/share/keyrings/debian-archive-2024.gpg /etc/apt/trusted.gpg.d/
 
       ##################################################################
       # 4. Python 仮想環境と Python 依存

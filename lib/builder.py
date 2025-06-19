@@ -316,22 +316,34 @@ def _get_codename_from_os_release() -> str:
     
 def _get_iso_filename() -> str:
     """
-    common→flavor の順で os-release を探し、
-    見つかったファイルから ISO のファイル名を決定する
+    templates/os-release.conf.j2 から生成された
+    **{CHROOT}/etc/os-release** を最優先に参照し、  
+    ISO ファイル名を決定する。
+    ─ 優先度 ─
+        1.  {CHROOT}/etc/os-release   (テンプレート済み)
+        2.  従来の config/common → flavor → … の os-release
     """
-    # 1) os-release ファイルを検索
-    for cfg in get_configs():
-        src = cfg / "os-release"
-        if src.exists():
-            break
+    # --- 1) chroot 側を最優先 ---
+    chroot_osr = CHROOT / "etc/os-release"
+    if chroot_osr.exists():
+        src = chroot_osr
     else:
-        paths = "\n  ".join(str(p / "os-release") for p in get_configs())
-        raise FileNotFoundError(
-            f"以下のいずれにも os-release が見つかりません:\n  {paths}\n"
-            "config/common/os-release をご確認ください。"
-        )
+        # --- 2) 旧来ロジックへのフォールバック ---
+        src = None
+        for cfg in get_configs():
+            cand = cfg / "os-release"
+            if cand.exists():
+                src = cand
+                break
+        if src is None:
+            paths = "\n  ".join(str(p / 'os-release') for p in get_configs())
+            raise FileNotFoundError(
+                "以下のいずれにも os-release が見つかりません:\n"
+                f"  {paths}\n"
+                "テンプレートまたは config/common/os-release を確認してください。"
+            )
 
-    # 2) simple parse
+    # --- 3) os-release をパース ---
     info: dict[str,str] = {}
     for line in src.read_text().splitlines():
         if "=" not in line or line.strip().startswith("#"):
@@ -342,8 +354,8 @@ def _get_iso_filename() -> str:
     name    = info.get("NAME", "os").lower()
     version = info.get("VERSION_ID", "")
     base    = f"{name}-{version}" if version else name
-    # 不正文字をアンダースコアに置換
-    safe    = re.sub(r'[^A-Za-z0-9._-]+', '_', base)
+    # 不正文字をハイフンに置換
+    safe    = re.sub(r'[^A-Za-z0-9._-]+', '-', base)
     # 環境変数 OYO_LANG から言語コードを取得（デフォルト en）
     lang    = os.getenv("OYO_LANG", "en")
     # 最終的なファイル名に言語コードを追加
@@ -462,19 +474,21 @@ def _copy_overlay():
             print(f"Applying overlay from {overlay} …")
             # rsync -a なら既存のファイル／シンボリックリンクを上書き削除してくれる
             _run([
-                "sudo", "rsync", "-a",
-                f"{overlay}/",  # Trailing slash: 中身すべてを
-                str(CHROOT) + "/"  # chroot 直下にコピー
+                "sudo", "rsync",
+                "-a",                      # アーカイブ  
+                "--chown=root:root",       # ★ 追加：コピー先では必ず root:root
+                f"{overlay}/",
+                str(CHROOT) + "/"
             ])
-     
-  
-    # --- ここで必ず sudoers.d の所有者を root:root に戻す ---
-    # overlay の所有者が root でない場合の sudoers.d エラー対策として、念のため修正     
-    print("Fixing ownership on /etc/sudoers.d …")
-    _run([
-        "sudo", "chroot", str(CHROOT),
-        "chown", "-R", "root:root", "/etc/sudoers.d"
-    ])
+       
+    # 所有者がroot出ない場合、sudo が実行できないため、  
+    # ここで必ず /etc/sudoers,sudoers.d の所有者を root:root に設定する 
+    print("Fixing ownership on /etc/sudoers,/etc/sudoers.d …")
+    _run(["sudo", "chroot", str(CHROOT), "chown", "root:root", "/etc/sudoers"])
+    _run(["sudo", "chroot", str(CHROOT), "chmod", "0440",      "/etc/sudoers"])
+    _run(["sudo", "chroot", str(CHROOT), "visudo", "-cf",      "/etc/sudoers"])
+    _run(["sudo", "chroot", str(CHROOT),"chown", "-R", "root:root", "/etc/sudoers.d"])
+
 
     print("Overlay files copied.")
 
@@ -605,6 +619,13 @@ def build_iso():
 
     kernel_files = sorted((CHROOT / "boot").glob("vmlinuz-*"))
     initrd_files = sorted((CHROOT / "boot").glob("initrd.img-*"))
+
+    if not kernel_files or not initrd_files:
+        raise FileNotFoundError(
+            "/boot に vmlinuz-* または initrd.img-* が見つかりません。"
+            "linux-image / initramfs-tools がインストールされ、"
+            "update-initramfs が成功しているか確認してください。")
+        
     kernel_src = kernel_files[-1]
     initrd_src = initrd_files[-1]
 
@@ -750,7 +771,8 @@ def build_iso():
         "sudo", "mksquashfs",
         str(CHROOT),
         str(squashfs),
-        "-comp","xz","-Xdict-size","100%",  # 圧縮方式: lz4（高速）
+#        "-comp", "lz4",  # 圧縮方式: lz4（高速、低圧縮）
+        "-comp","xz","-Xdict-size","100%",  # 圧縮方式: xz（低速、高圧縮）
         "-processors", str(cpus),   # 全コア数を指定（1以上）
         "-e","live"
     ])

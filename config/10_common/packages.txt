@@ -1,19 +1,38 @@
-#common
-dconf-cli
-linux-image-amd64
-live-boot
-initramfs-tools
-dbus-user-session
-xwayland
-mesa-vulkan-drivers
-libvirglrenderer1
-libegl-mesa0
-libgbm1
-libgl1-mesa-dri
+########################
+#  基本システム / Core #
+########################
+alsa-utils
+anacron
+avahi-daemon
+axel
+base-files
+bluetooth
+btrfs-progs
 ca-certificates
-dictionaries-common
-cracklib-runtime
-libpam-pwquality
+console-setup
+cups
+cups-pk-helper
+curl
+cryptsetup
+cryptsetup-initramfs
+dconf-cli
+dconf-gsettings-backend
+dbus
+dbus-user-session
+desktop-base
+desktop-file-utils
+eject
+expect
+firefox-esr
+firefox-esr-l10n-ja
+flatpak
+fontconfig
+fonts-cantarell
+fonts-liberation
+fonts-liberation2
+fonts-noto-mono
+fonts-symbola
+gnupg
 grub-common
 grub-efi-amd64-bin
 grub-efi-amd64-signed
@@ -21,56 +40,134 @@ grub-pc-bin
 grub2-common
 shim-signed
 efibootmgr
-udev
+ifupdown
+init
+initramfs-tools
 initramfs-tools-core
-fontconfig
-fonts-cantarell
-zstd
-desktop-base
-desktop-file-utils
- 
-#システム関連
-sudo
+iproute2
+iptables
+iputils-ping
+isc-dhcp-client
+isolinux
+iw
+libatk-adaptor
+libcanberra-pulse
+libegl-mesa0
+libgbm1
+libgl1-mesa-dri
+libglib2.0-bin
+libnss-mdns
+libnss-mymachines
+libnss-systemd
+libpam-pwquality
+libproxy1-plugin-gsettings
+libproxy1-plugin-networkmanager
+libproxy1-plugin-webkit
+libspa-0.2-bluetooth
+libspa-0.2-jack
+libvirglrenderer1
+librsvg2-common
+linux-image-amd64
+live-boot
+locales-all
+mesa-vulkan-drivers
+nano
+netbase
+network-manager-config-connectivity-debian
+pciutils
+pipewire-alsa
+pipewire-audio
+pipewire-audio-client-libraries
+pipewire-jack
+pipewire-pulse
+poppler-data
+power-profiles-daemon
+powertop
+python3
+qgnomeplatform-qt5
+qml-module-qtquick2
+qml-module-qtquick-window2
+resolvconf
 rsync
-locate
+ssh
+sudo
+syslinux
+syslinux-common
+system-config-printer-common
+system-config-printer-udev
+systemd
+systemd-timesyncd
+systemd-zram-generator
+task-laptop
+tasksel
+ufw
+usbutils
+usrmerge
+vim
+wireplumber
+xorg
+xserver-xorg-input-all
+xserver-xorg-video-all
+xwayland
+xz-utils
+zstd
 
-#Calamares関連
+#################################
+#  Calamares Installer (+Qt 6)  #
+#################################
 calamares
-qt6-location-plugins
-geoclue-2.0
-curl
-cryptsetup
 dosfstools
+geoclue-2.0
+python3-pyqt6.qtsvg
+qt6-location-plugins
 qml6-module-qtquick
 qml6-module-qtquick-window
-python3-pyqt6.qtsvg
 
-#plymouth関連
-plymouth
-plymouth-themes
+############################
+#  Plymouth Boot Splash    #
+############################
 libplymouth5
+plymouth
 plymouth-label
+plymouth-themes
 
-#firmware関連
-## 共通 CPU / 基本周辺
+##########################
+#  グラフィックス関連   #
+##########################
+mesa-vulkan-drivers
+libvirglrenderer1
+libegl-mesa0
+libgbm1
+libgl1-mesa-dri
+
+#################
+#  GStreamer    #
+#################
+gstreamer1.0-plugins-base
+gstreamer1.0-plugins-good
+
+####################
+#  Firmware Bundle #
+####################
+# 共通 CPU / Audio
 firmware-linux
 firmware-linux-nonfree
 firmware-sof-signed
 
-## GPU・ディスプレイ
-firmware-intel-graphics
+# GPU
 firmware-amd-graphics
+firmware-intel-graphics
 firmware-nvidia-graphics
 firmware-nvidia-gsp
 
-## 無線 LAN & Bluetooth
-firmware-iwlwifi
-firmware-realtek
+# WLAN / Bluetooth
 firmware-atheros
 firmware-brcm80211
+firmware-iwlwifi
 firmware-mediatek
+firmware-realtek
 
-## USB ドングル系
+# USB ドングル
 firmware-ath9k-htc
 firmware-carl9170
 firmware-zd1211

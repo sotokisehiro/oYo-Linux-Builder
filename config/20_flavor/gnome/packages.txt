@@ -25,3 +25,48 @@ librsvg2-bin
 
 #システム
 gsettings-desktop-schemas
+
+# GNOME 標準アイコン
+adwaita-icon-theme
+
+# アクセシビリティバス
+at-spi2-core
+
+# キーボードレイアウト統合
+gkbd-capplet
+
+# GIO の HTTPS／DAV 等を有効化
+glib-networking
+
+# シークレットストレージ
+gnome-keyring
+
+# .desktop メニュー
+gnome-menus
+
+gnome-session
+
+# ログイン効果音
+gnome-session-canberra
+
+gnome-shell
+
+# gsettings 共通スキーマ
+gsettings-desktop-schemas
+
+# ファイルシステム仮想化 (smb/mtp 等)
+gvfs-backends
+
+gvfs-fuse
+
+# 自動ロック解除
+libpam-gnome-keyring
+
+# GNOME シェルのネットワーク UI 依存
+network-manager-gnome
+
+# X アプリ互換
+xwayland
+
+# 初回ログイン時のユーザー DIR 作成
+xdg-user-dirs-gtk

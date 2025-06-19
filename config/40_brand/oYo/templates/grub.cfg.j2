@@ -1,8 +1,18 @@
 set default=0
 set timeout=5
 
+# BIOS 用モジュール読み込み（iso9660＋MS-DOSパーティション）
+insmod iso9660
+insmod part_msdos
+
+# UEFI 用モジュール読み込み（FAT＋GPTパーティション）
+insmod fat
+insmod part_gpt
+
+# /live/vmlinuz を持つパーティションを探して root にセット
+search --no-floppy --set=root --file /live/vmlinuz
+
 menuentry "{{ pretty_name }} (Live)" {
-    set root=(cd)
-    linux /live/vmlinuz boot=live systemd.unit=graphical.target quiet splash
+    linux /live/vmlinuz  boot=live systemd.unit=graphical.target quiet splash
     initrd /live/initrd.img
 }

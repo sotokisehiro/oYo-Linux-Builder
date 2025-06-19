@@ -1,1 +1,155 @@
-flatpak
+# GNOME Shell 拡張ブラウザ連携
+chrome-gnome-shell
+
+# GNOME 拡張機能
+gnome-shell-extension-manager
+
+# GNOME Tweaks
+gnome-tweaks
+
+# 画像ビューア
+eog
+
+# PDF・PS ビューア
+evince
+
+# アーカイブ操作 GUI
+file-roller
+
+# テキストエディタ
+gedit
+
+# 電卓
+gnome-calculator
+
+# 文字・記号パレット
+gnome-characters
+
+# 時計・アラーム・タイマー
+gnome-clocks
+
+# ディスク管理ツール
+gnome-disk-utility
+
+# フォントプレビュー
+gnome-font-viewer
+
+# システムログビューア
+gnome-logs
+
+# 複数 USB 書き込みツール
+gnome-multi-writer
+
+# オンラインアカウント統合
+gnome-online-accounts
+
+# 写真ビューア
+gnome-photos
+
+# Fcitx5 キーパネル拡張
+gnome-shell-extension-kimpanel
+
+# GNOME オフィシャル拡張
+gnome-shell-extensions
+
+# ソフトウェアセンター
+gnome-software
+
+# Flatpak 連携プラグイン
+gnome-software-plugin-flatpak
+
+# Nautilus クイックプレビュー
+gnome-sushi
+
+# タスクマネージャ
+gnome-system-monitor
+
+# GNOME 端末
+gnome-terminal
+
+# かんたんファイル共有
+gnome-user-share
+
+# 天気アプリ
+gnome-weather
+
+# Mozc 設定 GUI
+mozc-utils-gui
+
+# L2TP VPN プラグイン GUI
+network-manager-l2tp-gnome
+
+# OpenVPN プラグイン GUI
+network-manager-openvpn-gnome
+
+# 鍵・証明書マネージャ
+seahorse
+
+# デスクトップ検索インデックス
+tracker
+
+# GTK ダイアログユーティリティ
+zenity
+
+
+
+# ---- セキュリティ＆ユーティリティ ----
+# ClamAV GUI
+clamtk
+
+# ClamTK Nautilus 連携
+clamtk-gnome
+
+# UFW ファイアウォール GUI
+gufw
+
+# システムスナップショット
+timeshift
+
+# パッケージ管理
+synaptic
+
+
+# ---- 日本語フォント ----
+# IPA フォント
+fonts-ipafont
+
+# IPAex フォント一式
+fonts-ipaexfont
+
+# IPAex ゴシックのみ
+fonts-ipaexfont-gothic
+
+# IPAex 明朝のみ
+fonts-ipaexfont-mincho
+
+# Noto CJK（全収録）
+fonts-noto-cjk
+
+# Takao フォント一式
+fonts-takao
+
+# Takao ゴシック
+fonts-takao-gothic
+
+# Takao 明朝
+fonts-takao-mincho
+
+# VL ゴシック
+fonts-vlgothic
+
+
+
+# ---- システム情報・外観 ----
+# ブートスプラッシュ
+plymouth
+
+# Plymouth テーマ集
+plymouth-themes
+
+# ハードウェア情報 CLI
+hwinfo
+
+# KDE Partition Manager バックエンド
+libkpmcore12
+

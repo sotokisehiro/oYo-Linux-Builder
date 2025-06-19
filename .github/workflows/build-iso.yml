@@ -1,0 +1,95 @@
+# .github/workflows/iso-build.yml
+
+name: Build open.Yellow.os ISO (ja / en)
+####################################################################
+# 発火条件
+####################################################################
+on:
+  push:
+    branches: [ main ]          # main への push
+    tags:     [ 'v*' ]          # 例: v1.0.0 などバージョンタグ
+  workflow_dispatch:            # 手動実行も可
+
+####################################################################
+# 同一ブランチでの多重実行を防止
+####################################################################
+concurrency:
+  group: iso-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+####################################################################
+# ジョブ定義
+####################################################################
+   strategy:
+      matrix:
+        lang: [ ja, en ]           # ← 必要なら “de” など追加も可
+      fail-fast: false             # 片方失敗してももう片方は続行
+
+    steps:
+      ##################################################################
+      # 1. チェックアウト
+      ##################################################################
+      - uses: actions/checkout@v4
+
+      ##################################################################
+      # 2. 依存キャッシュ（APT）
+      ##################################################################
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /var/cache/apt/archives
+            /var/lib/apt/lists
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/scripts/apt-packages.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
+      ##################################################################
+      # 3. 依存インストール
+      ##################################################################
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3 python3-venv python3-pip mmdebstrap \
+            squashfs-tools grub-efi-amd64-bin shim-signed \
+            xorriso dosfstools rsync
+
+      ##################################################################
+      # 4. Python 仮想環境と Python 依存
+      ##################################################################
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      - run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -U pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      ##################################################################
+      # 5. ISO ビルド
+      ##################################################################
+      - name: Build ISO (${{ matrix.lang }})
+        run: |
+          . .venv/bin/activate
+          ./bin/oyo_builder.py \
+            --flavor gnome \
+            --lang ${{ matrix.lang }} \
+            --brand oYo \
+            build --tmpfs
+
+      ##################################################################
+      # 6. 成果物アップロード
+      ##################################################################
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openYellowOS-ISO
+          path: *.iso    # builder.py が出力する ISO 置き場
+
+

@@ -57,7 +57,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             python3 python3-venv python3-pip mmdebstrap \
             squashfs-tools grub-efi-amd64-bin shim-signed \
-            xorriso dosfstools rsync debian-archive-keyring gnupg
+            xorriso dosfstools rsync gnupg
+            
+          # ===== 最新の keyring (2024.1) を Debian から取得 =====
+          curl -fsSL -o keyring.deb \
+            https://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2024.1_all.deb
+          sudo dpkg -i keyring.deb
+          rm keyring.deb
 
       ##################################################################
       # 4. Python 仮想環境と Python 依存

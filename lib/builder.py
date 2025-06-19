@@ -446,7 +446,7 @@ def _prepare_chroot(codename: str):
         "--aptopt=APT::Install-Recommends \"false\";",
         
         # Debian gpgキーを指定
-        "--keyring=/usr/share/keyrings/debian-archive-2024.gpg",
+        "--keyring=/usr/share/keyrings/debian-archive-2024.gpg";",
 
         # ── あらかじめ集めたパッケージ群 ──
         include_opt,

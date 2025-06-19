@@ -57,7 +57,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             python3 python3-venv python3-pip mmdebstrap \
             squashfs-tools grub-efi-amd64-bin shim-signed \
-            xorriso dosfstools rsync
+            xorriso dosfstools rsync debian-archive-keyring gnupg
 
       ##################################################################
       # 4. Python 仮想環境と Python 依存

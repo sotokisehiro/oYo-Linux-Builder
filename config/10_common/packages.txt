@@ -19,7 +19,6 @@ dconf-cli
 dconf-gsettings-backend
 dbus
 dbus-user-session
-debian-archive-keyring
 desktop-base
 desktop-file-utils
 eject

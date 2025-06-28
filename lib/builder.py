@@ -588,6 +588,10 @@ def build_iso():
         _run(["sudo", "mount", "--bind", f"/{fs}", str(target)])
         _register_unmount(target)
         
+    # chroot内でネット接続するため、resolv.conf をバインド
+    print("Binding host resolv.conf into chroot…")
+    _bind_resolv_conf()
+        
     # ホストの APT キャッシュを使う (/var/cache/apt/archives)
     print("Binding host APT cache into chroot…")
     apt_cache = CHROOT / "var" / "cache" / "apt" / "archives"
@@ -894,3 +898,26 @@ def _apt_clean():
     """
     _run(["sudo","chroot",str(CHROOT),"apt-get","clean","autoclean"])
     _run(["sudo","rm","-rf",str(CHROOT / "var/lib/apt/lists")])
+    
+def _bind_resolv_conf():
+    """
+    ホスト側の resolv.conf を chroot に bind-mount して
+    chroot 内でも DNS を使えるようにする。
+    """
+    # systemd-resolved があればそちらを優先
+    host_resolv = Path("/run/systemd/resolve/resolv.conf") \
+        if Path("/run/systemd/resolve/resolv.conf").exists() \
+        else Path("/etc/resolv.conf")
+        
+    target = CHROOT / "etc/resolv.conf"
+
+    # 1) 親ディレクトリを必ず作成
+    _run(["sudo", "mkdir", "-p", str(target.parent)])
+
+    # 2) 既存の壊れた symlink /ファイルを削除して空ファイルを作る
+    _run(["sudo", "rm", "-f", str(target)])
+    _run(["sudo", "touch", str(target)])
+
+    _run(["sudo", "mount", "--bind", str(host_resolv), str(target)])
+    _register_unmount(target)  # 終了時に自動アンマウント
+

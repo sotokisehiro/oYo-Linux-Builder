@@ -51,6 +51,9 @@ gnome-session-canberra
 
 gnome-shell
 
+# 拡張機能
+gnome-shell-extensions
+
 # gsettings 共通スキーマ
 gsettings-desktop-schemas
 

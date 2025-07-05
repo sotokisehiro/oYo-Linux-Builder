@@ -88,6 +88,7 @@ qgnomeplatform-qt5
 qml-module-qtquick2
 qml-module-qtquick-window2
 resolvconf
+rtkit
 rsync
 ssh
 sudo

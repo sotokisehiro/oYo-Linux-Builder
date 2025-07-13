@@ -19,9 +19,9 @@ dconf-cli
 dconf-gsettings-backend
 dbus
 dbus-user-session
-desktop-base
 desktop-file-utils
 eject
+exfatprogs
 expect
 firefox-esr
 firefox-esr-l10n-ja

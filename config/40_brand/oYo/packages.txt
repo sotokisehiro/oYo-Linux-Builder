@@ -106,6 +106,10 @@ libdbusmenu-gtk3-4
 # gnome拡張機能 DINGで必要
 gir1.2-gnomedesktop-3.0
 
+#イベントサウンド
+gnome-session-canberra
+libcanberra-pulse
+
 # ---- セキュリティ＆ユーティリティ ----
 # ClamAV GUI
 clamtk

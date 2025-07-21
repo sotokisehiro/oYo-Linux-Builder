@@ -10,8 +10,6 @@ if [ -f "$GRUB_FILE" ] && [ -f "$THEME_IMG" ]; then
     echo "GRUB_BACKGROUND=\"$THEME_IMG\"" >> "$GRUB_FILE"
 fi
 
-update-grub
-
 # ライブ起動時のロックスクリーンの無効化を、元に戻す
 gsettings set org.gnome.desktop.lockdown disable-lock-screen false
 

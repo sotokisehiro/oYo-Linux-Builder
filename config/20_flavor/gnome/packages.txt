@@ -65,9 +65,6 @@ gvfs-fuse
 # 自動ロック解除
 libpam-gnome-keyring
 
-# GNOME シェルのネットワーク UI 依存
-network-manager-gnome
-
 # X アプリ互換
 xwayland
 

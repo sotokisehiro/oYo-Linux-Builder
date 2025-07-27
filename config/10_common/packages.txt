@@ -73,6 +73,7 @@ locales-all
 mesa-vulkan-drivers
 nano
 netbase
+netplan.io
 network-manager-config-connectivity-debian
 pciutils
 pipewire-alsa
@@ -105,6 +106,7 @@ ufw
 usbutils
 usrmerge
 vim
+wireless-tools
 wireplumber
 wpasupplicant
 xorg

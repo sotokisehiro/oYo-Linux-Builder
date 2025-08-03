@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Exec=sh -c "ln -s /home/$USER/音楽 /home/$USER/Music && rm ~/.config/autostart/lndir_Music.desktop"
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Name[ja_JP]=
+Name=
+Comment[ja_JP]=
+Comment=

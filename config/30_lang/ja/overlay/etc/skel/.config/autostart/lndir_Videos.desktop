@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Exec=sh -c "ln -s /home/$USER/ビデオ /home/$USER/Videos && rm ~/.config/autostart/lndir_Videos.desktop"
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Name[ja_JP]=
+Name=
+Comment[ja_JP]=
+Comment=

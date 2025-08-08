@@ -70,7 +70,6 @@ librsvg2-common
 linux-image-amd64
 live-boot
 locales-all
-mesa-vulkan-drivers
 nano
 netbase
 netplan.io
@@ -88,6 +87,9 @@ python3
 qgnomeplatform-qt5
 qml-module-qtquick2
 qml-module-qtquick-window2
+qml-module-qtwayland-client-texturesharing
+qml-module-qtwayland-compositor
+qtwayland5
 resolvconf
 rtkit
 rsync
@@ -114,6 +116,7 @@ xserver-xorg-input-all
 xserver-xorg-video-all
 xwayland
 xz-utils
+zram-tools
 zstd
 
 #################################
@@ -154,8 +157,12 @@ gstreamer1.0-plugins-good
 #  Firmware Bundle #
 ####################
 # 共通 CPU / Audio
+firmware-intel-misc
+firmware-intel-sound
 firmware-linux
 firmware-linux-nonfree
+firmware-misc-nonfree
+firmware-qcom-soc
 firmware-sof-signed
 
 # GPU
@@ -170,6 +177,7 @@ firmware-brcm80211
 firmware-iwlwifi
 firmware-mediatek
 firmware-realtek
+firmware-ti-connectivity
 
 # USB ドングル
 firmware-ath9k-htc

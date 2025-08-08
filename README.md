@@ -40,6 +40,7 @@ Custom Linux ISO build tool
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
+   mkdir log
    ```
 
 3. 依存ライブラリをインストール  
@@ -52,9 +53,9 @@ Custom Linux ISO build tool
    ./bin/oyo_builder.py init
    ```
 
-5. ISO のビルド例（GNOME／日本語／Sample-gnome ブランド）  
+5. ISO のビルド例（GNOME／日本語／oYo ブランド）  
    ```bash
-   ./bin/oyo_builder.py      --flavor gnome      --lang ja      --brand Sample-gnome      build
+   ./bin/oyo_builder.py      --flavor gnome      --lang ja      --brand oYo      build
    ```
 
 6. QEMU でテスト起動  

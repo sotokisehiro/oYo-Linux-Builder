@@ -45,6 +45,7 @@ REQUIRED_COMMANDS = [
 ]
 
 # 今回ビルドごとにタイムスタンプ付きログファイルを作成
+LOG_DIR.mkdir(parents=True, exist_ok=True) 
 ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 LOG_FILE = LOG_DIR / f"build_{ts}.log"
 

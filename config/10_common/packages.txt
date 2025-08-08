@@ -87,6 +87,9 @@ python3
 qgnomeplatform-qt5
 qml-module-qtquick2
 qml-module-qtquick-window2
+qml-module-qtwayland-client-texturesharing
+qml-module-qtwayland-compositor
+qtwayland5
 resolvconf
 rtkit
 rsync

@@ -70,7 +70,6 @@ librsvg2-common
 linux-image-amd64
 live-boot
 locales-all
-mesa-vulkan-drivers
 nano
 netbase
 netplan.io

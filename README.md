@@ -40,7 +40,6 @@ Custom Linux ISO build tool
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
-   mkdir log
    ```
 
 3. 依存ライブラリをインストール  

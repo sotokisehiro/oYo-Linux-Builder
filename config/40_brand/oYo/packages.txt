@@ -162,6 +162,9 @@ hwinfo
 # KDE Partition Manager バックエンド
 libkpmcore12
 
+# 電力管理用ユーティリティおよびスクリプト
+pm-utils
+
 # ---- 開発用 ----
 dconf-editor
 

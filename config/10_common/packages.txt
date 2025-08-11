@@ -126,8 +126,12 @@ dosfstools
 geoclue-2.0
 python3-pyqt6.qtsvg
 qt6-location-plugins
+qt6-wayland
+qgnomeplatform-qt6
 qml6-module-qtquick
 qml6-module-qtquick-window
+qml6-module-qtwayland-client-texturesharing
+qml6-module-qtwayland-compositor
 
 ############################
 #  Plymouth Boot Splash    #

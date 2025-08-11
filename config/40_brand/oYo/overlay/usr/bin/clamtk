@@ -1,9 +1,10 @@
 #!/usr/bin/perl
 #
-# ClamTk, copyright (C) 2004-2021 Dave M
+# ClamTk, copyright (C) 2004-2024 Dave M
 #
 # This file is part of ClamTk
-# (https://gitlab.com/dave_m/clamtk-gtk3/).
+# https://github.com/dave-theunsub/clamtk/
+# https://gitlab.com/dave_m/clamtk/
 #
 # ClamTk is free software; you can redistribute it and/or modify it
 # under the terms of either:
@@ -42,8 +43,9 @@ use Locale::gettext;
 use POSIX 'locale_h';
 textdomain( 'clamtk' );
 setlocale( LC_ALL, '' );
+
+# This seems horrible, but it works.
 setlocale( LC_TIME, 'C' );
-#setlocale( LC_ALL, 'C' );
 bind_textdomain_codeset( 'clamtk', 'UTF-8' );
 
 my $arg = decode( 'utf8', $ARGV[ 0 ] );

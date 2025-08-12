@@ -24,7 +24,6 @@ eject
 exfatprogs
 expect
 firefox-esr
-firefox-esr-l10n-ja
 flatpak
 fontconfig
 fonts-cantarell
@@ -114,7 +113,6 @@ wpasupplicant
 xorg
 xserver-xorg-input-all
 xserver-xorg-video-all
-xwayland
 xz-utils
 zram-tools
 zstd
@@ -127,8 +125,12 @@ dosfstools
 geoclue-2.0
 python3-pyqt6.qtsvg
 qt6-location-plugins
+qt6-wayland
+qgnomeplatform-qt6
 qml6-module-qtquick
 qml6-module-qtquick-window
+qml6-module-qtwayland-client-texturesharing
+qml6-module-qtwayland-compositor
 
 ############################
 #  Plymouth Boot Splash    #

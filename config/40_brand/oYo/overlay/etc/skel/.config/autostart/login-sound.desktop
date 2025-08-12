@@ -1,4 +1,7 @@
 [Desktop Entry]
 Type=Application
+Name=Login Sound
+Name[ja]=ログインサウンド
 Exec=/usr/bin/canberra-gtk-play --file="/usr/share/openyellowos/login-sound.ogg" --description="Login sound"
-Comment=Login sound
+Comment=play the oYo login sound
+Comment[ja]=oYo ログインサウンドを再生

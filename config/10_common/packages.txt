@@ -113,7 +113,6 @@ wpasupplicant
 xorg
 xserver-xorg-input-all
 xserver-xorg-video-all
-xwayland
 xz-utils
 zram-tools
 zstd

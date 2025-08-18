@@ -146,6 +146,13 @@ fonts-takao-mincho
 # VL ゴシック
 fonts-vlgothic
 
+# BIZ UD ゴシック
+fonts-morisawa-bizud-gothic
+
+# BIZ UD 明朝
+fonts-morisawa-bizud-mincho
+
+
 # ---- システム情報・外観 ----
 # ブートスプラッシュ
 plymouth

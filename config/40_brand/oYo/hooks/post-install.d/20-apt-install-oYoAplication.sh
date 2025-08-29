@@ -20,5 +20,5 @@ EOF
 apt update
 
 # 4) アプリケーションのインストール
-
+apt install oyo-ui-changer
 

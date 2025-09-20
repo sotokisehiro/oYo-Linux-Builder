@@ -185,3 +185,8 @@ firmware-ti-connectivity
 firmware-ath9k-htc
 firmware-carl9170
 firmware-zd1211
+
+# Secure Boot関連パッケージ
+shim-signed
+grub-efi-amd64-signed
+mokutil

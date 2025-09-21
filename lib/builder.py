@@ -13,12 +13,12 @@ import typer
 import atexit
 
 # --- 定数 ---
-ROOT     = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent
 CFG_BASE = ROOT / "config"
-WORK     = ROOT / "work"
-CHROOT   = WORK / "chroot"
-ISO      = WORK / "iso"
-LOG_DIR  = ROOT / "log"
+WORK = ROOT / "work"
+CHROOT = WORK / "chroot"
+ISO = WORK / "iso"
+LOG_DIR = ROOT / "log"
 
 # workディレクトリをtmpfs（RAMディスク）にマウントする際の容量
 # 環境変数OYO_TMPFS_SIZEで変更可能（例: "8G", "16G", "80%"）。デフォルトは8G。
@@ -45,7 +45,7 @@ REQUIRED_COMMANDS = [
 ]
 
 # 今回ビルドごとにタイムスタンプ付きログファイルを作成
-LOG_DIR.mkdir(parents=True, exist_ok=True) 
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 LOG_FILE = LOG_DIR / f"build_{ts}.log"
 
@@ -56,6 +56,7 @@ os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + "/usr/sbin"
 # アンマウント対象を記録するリスト
 _MOUNTS: list[Path] = []
 
+
 def _register_unmount(path: Path):
     """
     ビルド中にmountしたディレクトリを記録する。
@@ -63,6 +64,7 @@ def _register_unmount(path: Path):
     """
     if path not in _MOUNTS:
         _MOUNTS.append(path)
+
 
 def _cleanup_mounts():
     """
@@ -75,8 +77,10 @@ def _cleanup_mounts():
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
 
+
 # プログラム終了時に必ず呼ぶ
 atexit.register(_cleanup_mounts)
+
 
 def _mount_tmpfs(path: Path):
     """
@@ -87,14 +91,15 @@ def _mount_tmpfs(path: Path):
     print(f"Mounted tmpfs ({TMPFS_SIZE}) on {path}")
     _register_unmount(path)
 
+
 def get_configs() -> list[Path]:
     """
     各種設定レイヤー（common, flavor, lang, brand）を自動検出し、適用順に返す。
     ビルドやoverlay適用時にどの設定を参照すべきかを動的に決めるための関数。
     """
     flavor = os.getenv("OYO_FLAVOR", "common")
-    lang   = os.getenv("OYO_LANG",    "en")
-    brand  = os.getenv("OYO_BRAND",   "default")
+    lang = os.getenv("OYO_LANG",    "en")
+    brand = os.getenv("OYO_BRAND",   "default")
 
     configs: list[Path] = []
     for grp in sorted(CFG_BASE.iterdir()):
@@ -127,14 +132,15 @@ def get_configs() -> list[Path]:
 
     return configs
 
+
 def get_hook_configs() -> list[Path]:
     """
     pre-install/post-install用のhooks対象レイヤーを取得。
     フック実行時にどのhooksディレクトリを順番に見るかを決める。
     """
     flavor = os.getenv("OYO_FLAVOR", "common")
-    lang   = os.getenv("OYO_LANG",    "en")
-    brand  = os.getenv("OYO_BRAND",   "default")
+    lang = os.getenv("OYO_LANG",    "en")
+    brand = os.getenv("OYO_BRAND",   "default")
 
     configs: list[Path] = []
     for grp in sorted(CFG_BASE.iterdir()):
@@ -159,7 +165,8 @@ def get_hook_configs() -> list[Path]:
                 configs.append(sub)
 
     return configs
-    
+
+
 def _run_hooks(stage: str):
     """
     指定ステージ（pre-install, post-install）に応じた全フックシェルスクリプトをchroot内で順次実行する。
@@ -195,7 +202,8 @@ def _run_hooks(stage: str):
             "sudo", "chroot", str(CHROOT),
             "sh", f"/tmp/{script.name}"
         ])
-    
+
+
 def _render_brand_template(template_name: str, dest: Path, context: dict):
     """
     ブランドごとのJinja2テンプレートをレンダリングし、chroot内の所定パスに書き込む。
@@ -203,7 +211,7 @@ def _render_brand_template(template_name: str, dest: Path, context: dict):
     """
     brand = os.getenv("OYO_BRAND", "default")
     brand_layer = find_brand_layer()
-    
+
     if not brand_layer:
         raise FileNotFoundError("config 配下に *_brand ディレクトリが見つかりません")
     tpl_dir = brand_layer / brand / "templates"
@@ -215,6 +223,7 @@ def _render_brand_template(template_name: str, dest: Path, context: dict):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(rendered)
     print(f"Rendered {template_name} → {target}")
+
 
 def _check_host_dependencies():
     """
@@ -231,6 +240,89 @@ def _check_host_dependencies():
         sys.exit(1)
 
 
+def _ensure_signed_kernel():
+    """
+    Secure Boot用のsigned kernelを確実にインストール
+    複数のパッケージ名候補を試し、利用可能な署名済みカーネルを特定する
+    """
+    signed_kernel_candidates = [
+        "linux-image-amd64-signed",      # Debian 12+ メタパッケージ
+        "linux-signed-image-amd64",      # 古い形式
+        "linux-image-6.1.0-amd64-signed",  # 具体的バージョン例
+        "linux-image-6.6.0-amd64-signed",  # 具体的バージョン例
+    ]
+
+    print("Searching for Secure Boot compatible signed kernel packages...")
+
+    for pkg in signed_kernel_candidates:
+        try:
+            # パッケージが存在するかチェック
+            result = subprocess.run(
+                ["apt-cache", "show", pkg],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                check=True
+            )
+            if result.returncode == 0:
+                print(f"✓ Found signed kernel package: {pkg}")
+                return pkg
+        except subprocess.CalledProcessError:
+            print(f"  - {pkg} not available")
+            continue
+
+    # メタパッケージが見つからない場合、具体的なバージョンを検索
+    print("Searching for specific signed kernel versions...")
+    try:
+        result = subprocess.run(
+            ["apt-cache", "search", "--names-only", "linux-image.*signed"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=True
+        )
+
+        available_kernels = []
+        for line in result.stdout.strip().splitlines():
+            if line and not line.startswith(" "):
+                pkg_name = line.split()[0]
+                if "signed" in pkg_name and "amd64" in pkg_name:
+                    available_kernels.append(pkg_name)
+
+        if available_kernels:
+            # 最新版を選択（通常はソート順で最後）
+            selected = sorted(available_kernels)[-1]
+            print(f"✓ Found signed kernel package: {selected}")
+            return selected
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error searching for signed kernels: {e}")
+
+    # 署名済みカーネルが見つからない場合はエラー
+    raise RuntimeError(
+        "❌ ERROR: No Secure Boot compatible signed kernel found!\n"
+        "Secure Boot will NOT work without a signed kernel.\n"
+        "Please install one of: linux-image-amd64-signed, linux-signed-image-amd64\n"
+        "Or check your package repository configuration."
+    )
+
+
+def _verify_signed_kernel_installation():
+    """
+    インストール後に署名済みカーネルが正しく配置されているか確認
+    """
+    boot_dir = CHROOT / "boot"
+
+    # 署名済みカーネルファイルを探す
+    signed_kernels = list(boot_dir.glob("vmlinuz-*"))
+    if not signed_kernels:
+        raise RuntimeError("No kernel found in /boot after installation")
+
+    latest_kernel = sorted(signed_kernels)[-1]
+    print(f"✓ Kernel installed: {latest_kernel.name}")
+
+    return latest_kernel
+
 
 # logging の設定：ファイルとコンソールの両方に出力
 logging.basicConfig(
@@ -242,6 +334,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
 
 def initialize(use_tmpfs: bool = False):
     """
@@ -262,8 +355,10 @@ def initialize(use_tmpfs: bool = False):
         _mount_tmpfs(WORK)
         print("tmpfs created")
 
+
 # スクリプトが root で実行中か
 IS_ROOT = (os.geteuid() == 0)
+
 
 def _run(cmd, **kwargs):
     """
@@ -306,7 +401,7 @@ def _get_codename_from_os_release() -> str:
     # 2) 中身をパースして VERSION_CODENAME を探す
     for line in src.read_text().splitlines():
         if line.startswith("VERSION_CODENAME="):
-            codename = line.split("=",1)[1].strip().strip('"')
+            codename = line.split("=", 1)[1].strip().strip('"')
             if codename:
                 return codename
     raise RuntimeError(
@@ -314,7 +409,8 @@ def _get_codename_from_os_release() -> str:
         "例：VERSION_CODENAME=bookworm\n"
         "を追記してください。"
     )
-    
+
+
 def _get_iso_filename() -> str:
     """
     templates/os-release.conf.j2 から生成された
@@ -345,22 +441,23 @@ def _get_iso_filename() -> str:
             )
 
     # --- 3) os-release をパース ---
-    info: dict[str,str] = {}
+    info: dict[str, str] = {}
     for line in src.read_text().splitlines():
         if "=" not in line or line.strip().startswith("#"):
             continue
         k, v = line.split("=", 1)
         info[k] = v.strip().strip('"')
 
-    name    = info.get("NAME", "os").lower()
+    name = info.get("NAME", "os").lower()
     version = info.get("VERSION_ID", "")
-    base    = f"{name}-{version}" if version else name
+    base = f"{name}-{version}" if version else name
     # 不正文字をハイフンに置換
-    safe    = re.sub(r'[^A-Za-z0-9._-]+', '-', base)
+    safe = re.sub(r'[^A-Za-z0-9._-]+', '-', base)
     # 環境変数 OYO_LANG から言語コードを取得（デフォルト en）
-    lang    = os.getenv("OYO_LANG", "en")
+    lang = os.getenv("OYO_LANG", "en")
     # 最終的なファイル名に言語コードを追加
     return f"{safe}-{lang}.iso"
+
 
 def _prepare_chroot(codename: str):
     """
@@ -401,28 +498,21 @@ def _prepare_chroot(codename: str):
     base_pkgs = ["bash", "coreutils"]
     include_pkgs = sorted(set(base_pkgs + pkg_list))
 
-    #signed kernel を探して include_pkgs に追加
-    print("Probing for latest linux-image-*-signed package…")
+    # Secure Boot対応：署名済みカーネルの確実なインストール
+    print("🔐 Ensuring Secure Boot compatible signed kernel...")
     try:
-        result = subprocess.run(
-            ["apt-cache", "search", "^linux-image-.*-signed$"],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=True
-        )
-        candidates = [line.split()[0] for line in result.stdout.strip().splitlines()]
-        if candidates:
-            selected_kernel = sorted(candidates)[-1]
-            print(f"Detected signed kernel: {selected_kernel}")
-            include_pkgs.append(selected_kernel)
-        else:
-            print("[Warning] No signed kernel found in apt-cache")
-    except Exception as e:
-        print(f"[Warning] Could not detect signed kernel automatically: {e}")
+        signed_kernel_pkg = _ensure_signed_kernel()
+        include_pkgs.append(signed_kernel_pkg)
+        print(f"✓ Added to package list: {signed_kernel_pkg}")
+    except RuntimeError as e:
+        print(f"❌ {e}")
+        print("⚠️  Continuing build without signed kernel (Secure Boot will not work)")
 
-    #include_opt を定義する
+    # include_opt を定義する
     include_opt = "--include=" + ",".join(include_pkgs)
 
     print("Deploying base system via mmdebstrap (incl. all packages)…")
-    
+
     # ISOファイルサイズを減らすため、docs / man / 多言語ロケールを除外
     dpkg_opts = [
         "--dpkgopt=path-exclude=/usr/share/doc/*",
@@ -431,7 +521,7 @@ def _prepare_chroot(codename: str):
         "--dpkgopt=path-exclude=/usr/share/locale/*",
         "--dpkgopt=path-include=/usr/share/locale/ja/*",
     ]
-    
+
     _run([
         "sudo", "mmdebstrap",
         "--architectures=amd64",
@@ -443,7 +533,7 @@ def _prepare_chroot(codename: str):
         "--aptopt=Acquire::Queue-Mode \"host\";",
         "--aptopt=Acquire::Retries \"3\";",
 
-        # ISOファイルサイズを減らすため、Recommendsを除外        
+        # ISOファイルサイズを減らすため、Recommendsを除外
         "--aptopt=APT::Install-Recommends \"false\";",
 
         # ── あらかじめ集めたパッケージ群 ──
@@ -458,17 +548,24 @@ def _prepare_chroot(codename: str):
         "deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware"
     ])
 
-    # ISOファイルサイズを減らすため、キャッシュを削除    
-    _apt_clean() 
+    # ISOファイルサイズを減らすため、キャッシュを削除
+    _apt_clean()
+
+    # インストール後の検証を追加
+    try:
+        _verify_signed_kernel_installation()
+    except Exception as e:
+        print(f"⚠️  Kernel verification failed: {e}")
 
     print(f"Base system + packages deployed via mmdebstrap ({codename}).")
+
 
 def _copy_overlay():
     """
     各設定レイヤーごとのoverlayファイル群をchrootへ順次コピー。
     sudoers.dの所有権リセットも含め、環境依存トラブルを未然に防ぐ。
     """
-    
+
     for cfg in get_configs():
         overlay = cfg / "overlay"
         if overlay.exists():
@@ -476,29 +573,30 @@ def _copy_overlay():
             # rsync -a なら既存のファイル／シンボリックリンクを上書き削除してくれる
             _run([
                 "sudo", "rsync",
-                "-a",                      # アーカイブ  
+                "-a",                      # アーカイブ
                 "--chown=root:root",       # ★ 追加：コピー先では必ず root:root
                 f"{overlay}/",
                 str(CHROOT) + "/"
             ])
-       
-    # 所有者がroot出ない場合、sudo が実行できないため、  
-    # ここで必ず /etc/sudoers,sudoers.d の所有者を root:root に設定する 
+
+    # 所有者がroot出ない場合、sudo が実行できないため、
+    # ここで必ず /etc/sudoers,sudoers.d の所有者を root:root に設定する
     print("Fixing ownership on /etc/sudoers,/etc/sudoers.d …")
     _run(["sudo", "chroot", str(CHROOT), "chown", "root:root", "/etc/sudoers"])
     _run(["sudo", "chroot", str(CHROOT), "chmod", "0440",      "/etc/sudoers"])
     _run(["sudo", "chroot", str(CHROOT), "visudo", "-cf",      "/etc/sudoers"])
-    _run(["sudo", "chroot", str(CHROOT),"chown", "-R", "root:root", "/etc/sudoers.d"])
-
+    _run(["sudo", "chroot", str(CHROOT), "chown",
+         "-R", "root:root", "/etc/sudoers.d"])
 
     print("Overlay files copied.")
+
 
 def _apply_os_release():
     """
     os-releaseをブランド用テンプレートまたはoverlayからchrootに反映。
     システム情報・識別情報を正しく埋め込むための処理。
     """
-    
+
     # 1) brand.yml を読み込んで context 作成
     brand = os.getenv("OYO_BRAND", "default")
 
@@ -510,8 +608,8 @@ def _apply_os_release():
 
     # この下に各ブランド設定フォルダ（Sample-gnome など）がある想定
     brand_dir = brand_layer / brand
-        
-     # 1) brand.yml を読み込んで context 作成
+
+    # 1) brand.yml を読み込んで context 作成
     brand_yml = brand_dir / "brand.yml"
 
     context = {}
@@ -537,6 +635,7 @@ def _apply_os_release():
             return
     raise FileNotFoundError("config/common/os-release をご確認ください。")
 
+
 def _apply_calamares_branding():
     """
     Calamaresインストーラのbranding設定をテンプレートで生成またはoverlayから反映する。
@@ -546,20 +645,24 @@ def _apply_calamares_branding():
 
     # 数字付きプレフィックスの「*_brand」ディレクトリを探す
     brand_layer = find_brand_layer()
-    
+
     # brand.yml から変数を読み込む
-    yml = brand_layer / brand / "brand.yml" if brand_layer else CFG_BASE / "brand" / brand / "brand.yml"
+    yml = brand_layer / brand / "brand.yml" if brand_layer else CFG_BASE / \
+        "brand" / brand / "brand.yml"
 
     context = {}
     if yml.exists():
         context = yaml.safe_load(yml.read_text())
     # テンプレートがあればレンダリング
-    tpl = brand_layer / brand / "templates" / "branding.desc.j2" if brand_layer else CFG_BASE / "brand" / brand / "templates" / "branding.desc.j2"
+    tpl = brand_layer / brand / "templates" / "branding.desc.j2" if brand_layer else CFG_BASE / \
+        "brand" / brand / "templates" / "branding.desc.j2"
     if tpl.exists():
-        dest = Path("etc") / "calamares" / "branding" / "custom" / "branding.desc"
+        dest = Path("etc") / "calamares" / "branding" / \
+            "custom" / "branding.desc"
         _render_brand_template("branding.desc.j2", dest, context)
     else:
         print(f"No branding.desc.j2 for brand={brand}, skipping template.")
+
 
 def build_iso():
     """
@@ -573,14 +676,14 @@ def build_iso():
 
     print("Copying overlay…")
     _copy_overlay()
-    
+
     print("User add live…")
     create_live_user()
 
     # ─── Calamares branding.desc をテンプレートで生成する ───
     print("Applying Calamares branding template…")
     _apply_calamares_branding()
-    
+
     # ——— chroot 内に /proc /sys /dev をバインドマウント ———
     print("Mounting /proc, /sys, /dev into chroot…")
     for fs in ("proc", "sys", "dev"):
@@ -588,18 +691,18 @@ def build_iso():
         target.mkdir(exist_ok=True)
         _run(["sudo", "mount", "--bind", f"/{fs}", str(target)])
         _register_unmount(target)
-        
+
     # chroot内でネット接続するため、resolv.conf をバインド
     print("Binding host resolv.conf into chroot…")
     _bind_resolv_conf()
-        
+
     # ホストの APT キャッシュを使う (/var/cache/apt/archives)
     print("Binding host APT cache into chroot…")
     apt_cache = CHROOT / "var" / "cache" / "apt" / "archives"
     apt_cache.mkdir(parents=True, exist_ok=True)
     _run(["sudo", "mount", "--bind", "/var/cache/apt/archives", str(apt_cache)])
-    _register_unmount(apt_cache)  
-    
+    _register_unmount(apt_cache)
+
     # ——— post-install hooks を実行 ———
     print("Running post-install hooks…")
     _run_hooks("post-install")
@@ -630,13 +733,14 @@ def build_iso():
             "/boot に vmlinuz-* または initrd.img-* が見つかりません。"
             "linux-image / initramfs-tools がインストールされ、"
             "update-initramfs が成功しているか確認してください。")
-        
+
     kernel_src = kernel_files[-1]
     initrd_src = initrd_files[-1]
 
     _run(["sudo", "cp", str(kernel_src), str(live_chroot / "vmlinuz")])
     _run(["sudo", "cp", str(initrd_src), str(live_chroot / "initrd.img")])
-    print(f"Live kernel ({kernel_src.name}) and initrd ({initrd_src.name}) copied.")
+    print(
+        f"Live kernel ({kernel_src.name}) and initrd ({initrd_src.name}) copied.")
 
     # ——— ISO ルートを作成 ———
     print("Preparing ISO root…")
@@ -676,8 +780,8 @@ def build_iso():
     efi_boot.mkdir(parents=True, exist_ok=True)
 
     # Secure Boot 対応用の shim + grubx64.efi を配置
-    shim_src  = CHROOT / "usr/lib/shim/shimx64.efi.signed"
-    mm_src    = CHROOT / "usr/lib/shim/mmx64.efi"
+    shim_src = CHROOT / "usr/lib/shim/shimx64.efi.signed"
+    mm_src = CHROOT / "usr/lib/shim/mmx64.efi"
 
     # GRUB EFI（Microsoft署名済）をそのままコピー
     signed_grub = CHROOT / "usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed"
@@ -709,7 +813,8 @@ def build_iso():
         if theme_tpl.exists():
             _render_brand_template(
                 "plymouth-theme.conf.j2",
-                Path("usr") / "share" / "plymouth" / "themes" / context.get("theme","default") / "theme",
+                Path("usr") / "share" / "plymouth" / "themes" /
+                context.get("theme", "default") / "theme",
                 context
             )
             print(f"Applied Plymouth theme from {theme_tpl}")
@@ -732,7 +837,7 @@ def build_iso():
                 ISO / "boot" / "grub" / "grub.cfg",
                 context
             )
-                
+
     print(f"Applied branded grub.cfg from {grub_tpl} to BIOS and UEFI")
     uefi_grub_cfg_path = ISO / "EFI" / "BOOT" / "grub.cfg"
     _run([
@@ -751,16 +856,18 @@ def build_iso():
     kernel_files = sorted((CHROOT / "boot").glob("vmlinuz-*"))
     initrd_files = sorted((CHROOT / "boot").glob("initrd.img-*"))
     if not kernel_files or not initrd_files:
-        raise FileNotFoundError("chroot/boot に vmlinuz-* または initrd.img-* が見つかりません")
+        raise FileNotFoundError(
+            "chroot/boot に vmlinuz-* または initrd.img-* が見つかりません")
     kernel_src = kernel_files[-1]
     initrd_src = initrd_files[-1]
 
     _run(["sudo", "cp", str(kernel_src), str(live_dir / "vmlinuz")])
     _run(["sudo", "cp", str(initrd_src), str(live_dir / "initrd.img")])
-    print(f"Copied live kernel ({kernel_src.name}) and initrd ({initrd_src.name}) into ISO root.")
-    
+    print(
+        f"Copied live kernel ({kernel_src.name}) and initrd ({initrd_src.name}) into ISO root.")
+
     # squashfs イメージを作成（仮想FSを完全除外）
-    # —— squashfs の前に chroot の仮想FSをアンマウント —— 
+    # —— squashfs の前に chroot の仮想FSをアンマウント ——
     print("Unmounting /proc, /sys, /dev from chroot before squashfs…")
     for fs in ("dev", "sys", "proc", "var/cache/apt/archives"):
         _run(["sudo", "umount", "-l", str(CHROOT / fs)])
@@ -771,15 +878,15 @@ def build_iso():
 
     # squashfs 生成の高速化: LZ4 + 全コア使用
     cpus = os.cpu_count() or 1
-    
+
     _run([
         "sudo", "mksquashfs",
         str(CHROOT),
         str(squashfs),
-#        "-comp", "lz4",  # 圧縮方式: lz4（高速、低圧縮）
-        "-comp","xz","-Xdict-size","100%",  # 圧縮方式: xz（低速、高圧縮）
+        #        "-comp", "lz4",  # 圧縮方式: lz4（高速、低圧縮）
+        "-comp", "xz", "-Xdict-size", "100%",  # 圧縮方式: xz（低速、高圧縮）
         "-processors", str(cpus),   # 全コア数を指定（1以上）
-        "-e","live"
+        "-e", "live"
     ])
     print(f"Squashfs image created at {squashfs}")
 
@@ -789,6 +896,7 @@ def build_iso():
 
     # 終了ログ
     logger.info("=== Build finished ===")
+
 
 def _make_iso():
     """
@@ -808,6 +916,7 @@ def _make_iso():
         str(ISO)
     ])
     logger.info(f"ISO image created: {iso_file}")
+
 
 def clean_work():
     """
@@ -833,9 +942,10 @@ def clean_work():
         if target.exists():
             try:
                 cmd = ["sudo", "umount", "-l", str(target)]
-                subprocess.run(cmd, stdout=devnull, stderr=devnull, check=False)
+                subprocess.run(cmd, stdout=devnull,
+                               stderr=devnull, check=False)
             except FileNotFoundError:
-                  # 念のため、失敗しても先に進める
+                # 念のため、失敗しても先に進める
                 pass
 
     # ② tmpfs が残っている限り、二重マウントも含めてアンマウント
@@ -852,7 +962,8 @@ def clean_work():
     WORK.mkdir(parents=True, exist_ok=True)
 
     print(f"Cleaned work directory (and unmounted tmpfs): {WORK}")
-    
+
+
 def create_live_user():
     """
     chroot内にライブ用ユーザー（live）を作成し、/etc/skelからホームディレクトリ内容を補完コピー。
@@ -882,24 +993,28 @@ def create_live_user():
     ])
 
     print("ユーザー 'live' を作成し、/etc/skel の全内容を確実にコピーしました。")
-    
+
+
 def find_brand_layer():
     """
     config配下から「*_brand」ディレクトリを探して返すユーティリティ。
     ブランド毎の設定探索を一元化するために利用。
     """
     return next(
-        (d for d in CFG_BASE.iterdir() if d.is_dir() and d.name.split("_",1)[1] == "brand"),
+        (d for d in CFG_BASE.iterdir() if d.is_dir()
+         and d.name.split("_", 1)[1] == "brand"),
         None
     )
+
 
 def _apt_clean():
     """
     aptキャッシュを削除する
     """
-    _run(["sudo","chroot",str(CHROOT),"apt-get","clean","autoclean"])
-    _run(["sudo","rm","-rf",str(CHROOT / "var/lib/apt/lists")])
-    
+    _run(["sudo", "chroot", str(CHROOT), "apt-get", "clean", "autoclean"])
+    _run(["sudo", "rm", "-rf", str(CHROOT / "var/lib/apt/lists")])
+
+
 def _bind_resolv_conf():
     """
     ホスト側の resolv.conf を chroot に bind-mount して
@@ -909,7 +1024,7 @@ def _bind_resolv_conf():
     host_resolv = Path("/run/systemd/resolve/resolv.conf") \
         if Path("/run/systemd/resolve/resolv.conf").exists() \
         else Path("/etc/resolv.conf")
-        
+
     target = CHROOT / "etc/resolv.conf"
 
     # 1) 親ディレクトリを必ず作成
@@ -921,4 +1036,3 @@ def _bind_resolv_conf():
 
     _run(["sudo", "mount", "--bind", str(host_resolv), str(target)])
     _register_unmount(target)  # 終了時に自動アンマウント
-

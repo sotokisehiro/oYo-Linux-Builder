@@ -530,6 +530,9 @@ def _prepare_chroot(codename: str):
         # calamaresインストールでエラーになるため"important"を指定する
         "--variant=important",
 
+        # non-debian環境でのGPG鍵エラー対策
+        "--keyring=/usr/share/keyrings/debian-archive-keyring.gpg",
+
         # ── 並列ダウンロード・リトライ設定 ──
         "--aptopt=Acquire::Queue-Mode \"host\";",
         "--aptopt=Acquire::Retries \"3\";",
